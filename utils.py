@@ -26,7 +26,8 @@ class LoadTrajData(object):
                     target_data[br] += str(x)+","+str(y) + " "
 
             self.seqlen['inputs'].append(len(input_data[br]))
-            self.seqlen['targets'].append(len(target_data[br]))
+            # the +1 accounts for the <GO> symbol
+            self.seqlen['targets'].append(len(target_data[br]) + 1)
             
             if self.max_len['inputs'] <= len(input_data[br]):
                 self.max_len['inputs'] = len(input_data[br])
@@ -55,7 +56,8 @@ class LoadTrajData(object):
             target_data[br] = target_data[br][:-1] # account for empty space in the end..
 
             self.seqlen['inputs'].append(len(input_data[br]))
-            self.seqlen['targets'].append(len(target_data[br].split()))
+            # the +1 accounts for the <GO> symbol
+            self.seqlen['targets'].append(len(target_data[br].split()) + 1)
 
             if self.max_len['inputs'] <= len(input_data[br]):
                 self.max_len['inputs'] = len(input_data[br])
@@ -84,7 +86,8 @@ class LoadTrajData(object):
             target_data[br] = target_data[br][:-1] # account for empty space in the end..
 
             self.seqlen['inputs'].append(len(input_data[br]))
-            self.seqlen['targets'].append(len(target_data[br].split()))
+            # the +1 accounts for the <GO> symbol
+            self.seqlen['targets'].append(len(target_data[br].split()) + 1)
 
             if self.max_len['inputs'] <= len(input_data[br]):
                 self.max_len['inputs'] = len(input_data[br])
@@ -162,9 +165,13 @@ class LoadTrajData(object):
 
     def embedAsString(self, data_points, contents, dataType='inputs', test=False, pad=True):
         # Not the pretiest method...reduce the if-else cases ..
-        _char2num = self.convertChar2Num(data_points, dataType, contents)
+        if pad:
+            _char2num = {'<PAD>':0}
+        else:
+            _char2num = {}
+
+        _char2num.update(self.convertChar2Num(data_points, dataType, contents))
         _char2num['<END>'] = len(_char2num)
-        _char2num['<PAD>'] = len(_char2num)
         if not test: # assuming no new characters introduced in test.
             self.char2Num[dataType] = _char2num
 
@@ -188,7 +195,7 @@ class LoadTrajData(object):
             u_characters = set(' '.join(data_points))
         elif contents == 'directions':
             u_characters = set(["left", "right", "up", "down"])
-        return dict(zip(u_characters, range(len(u_characters))))
+        return dict(zip(u_characters, range(1, len(u_characters) + 1))) # the <PAD> is 0
 
     def numToChar(self, _char2num):
         return dict(zip(_char2num.values(), _char2num.keys()))
@@ -315,6 +322,7 @@ class LoadTrajData(object):
         """ Return a batch of data. When dataset end is reached, start over.
         """
         shuffle = np.random.permutation(len(data))
+
         data = data[shuffle]
         labels = labels[shuffle]
         seqlen_idx = [seqlen_idx[i] for i in shuffle]
