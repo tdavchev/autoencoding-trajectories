@@ -61,8 +61,7 @@ with tf.variable_scope('encoding') as encoding_scope:
     _, encoder_state = tf.nn.dynamic_rnn(cell, inputs=encoder_emb_inp, dtype=tf.float32, sequence_length=encoder_lengths)
 
 with tf.variable_scope('decoding') as decoding_scope:
-    # dec_outputs, _ = tf.nn.dynamic_rnn(cell, decoder_emb_inp, initial_state=encoder_state)
-    train_decoder_fn = tf.contrib.seq2seq.simple_decoder_fn_train(encoder_state)
+    dec_outputs, _ = tf.nn.dynamic_rnn(cell, decoder_emb_inp, initial_state=encoder_state)
 
 # connect outputs to
 logits = tf.contrib.layers.fully_connected(
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         for epoch_i in range(EPOCHS):
             start_time = time.time()
             for batch_i, (source_batch, target_batch, batch_seqlen, batch_y_seqlen) in enumerate(data.batch_data(pad_x_train, y_train, seqlen_idx_train, BATCH_SIZE)):
-                food = { inputs: source_batch,
+                food = {inputs: source_batch,
                         encoder_lengths: batch_seqlen,
                         decoder_lengths: batch_y_seqlen,
                         outputs: target_batch[:, :-1],
