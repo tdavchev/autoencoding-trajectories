@@ -10,7 +10,7 @@ class LoadTrajData(object):
         self.contents = contents
         self.input_data, self.target_data = self.loadData(file_path)
     
-    def toStringLocations(self, data, points_of_split):
+    def toStringLocations(self, data):
         input_data = []
         target_data = []
         br = 0
@@ -19,7 +19,7 @@ class LoadTrajData(object):
             target_data.append("")
             for count, (x, y) in enumerate(zip(entry[0], entry[1])):
                 input_data[br] += str(x)+","+str(y) + " "
-                if count <= points_of_split[br]+3 and count >= points_of_split[br]-3:
+                if count <= self.points_of_split[br]+3 and count >= self.points_of_split[br]-3:
                     for _ in range(10):
                         target_data[br] += 'B'
                 else:
@@ -39,7 +39,7 @@ class LoadTrajData(object):
 
         return input_data, target_data
 
-    def toDwithDirections(self, data, points_of_split):
+    def toDwithDirections(self, data):
         input_data = []
         target_data = []
         br = 0
@@ -48,7 +48,7 @@ class LoadTrajData(object):
             target_data.append("")
             for count, (x, y) in enumerate(zip(entry[0], entry[1])):
                 input_data[br].append([x, y])
-                if count <= points_of_split[br]:
+                if count <= self.points_of_split[br]:
                     target_data[br] += label[1] + " "
                 else:
                     target_data[br] += label[2] + " "
@@ -69,7 +69,7 @@ class LoadTrajData(object):
 
         return input_data, target_data
 
-    def toDirections(self, data, points_of_split):
+    def toDirections(self, data):
         input_data = []
         target_data = []
         br = 0
@@ -78,7 +78,7 @@ class LoadTrajData(object):
             target_data.append("")
             for count, (x, y) in enumerate(zip(entry[0], entry[1])):
                 input_data[br] += str(x)+","+str(y) + " "
-                if count <= points_of_split[br]:
+                if count <= self.points_of_split[br]:
                     target_data[br] += label[1] + " "
                 else:
                     target_data[br] += label[2] + " "
@@ -317,15 +317,15 @@ class LoadTrajData(object):
         raw_data = np.load(file_path)
         raw_x, raw_y = raw_data[:, 0], raw_data[:, 1]
         raw_y = np.abs(raw_y - np.max(raw_y)) # flip it
-        points_of_split = self.getSplitPoints()
+        self.points_of_split = self.getSplitPoints()
         split_data = self.splitData(raw_x, raw_y)
         data = self.augment(split_data)
         if self.contents == 'locations':
-            input_data, target_data = self.toStringLocations(data, points_of_split)
+            input_data, target_data = self.toStringLocations(data)
         elif self.contents == 'directions':
-            input_data, target_data = self.toDirections(data, points_of_split)
+            input_data, target_data = self.toDirections(data)
         elif self.contents == '2D-directions':
-            input_data, target_data = self.toDwithDirections(data, points_of_split)
+            input_data, target_data = self.toDwithDirections(data)
 
         return input_data, target_data
 
@@ -339,8 +339,9 @@ class LoadTrajData(object):
         seqlen_idx = [seqlen_idx[i] for i in shuffle]
         seqlen = [self.seqlen['inputs'][i] for i in seqlen_idx]
         y_seqlen = [self.seqlen['targets'][i] for i in seqlen_idx]
+        p_of_split = [self.points_of_split[i] for i in seqlen_idx]
         start = 0
 
         while start + batch_size <= len(data):
-            yield data[start:start+batch_size], labels[start:start+batch_size], seqlen[start:start+batch_size], y_seqlen[start:start+batch_size]
+            yield data[start:start+batch_size], labels[start:start+batch_size], seqlen[start:start+batch_size], y_seqlen[start:start+batch_size], p_of_split[start:start+batch_size]
             start += batch_size

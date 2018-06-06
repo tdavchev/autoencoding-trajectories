@@ -29,6 +29,7 @@ seqlen_idx_train = [[idx for idx, val in enumerate(data.input_data) if val==trai
 seqlen_idx_train = np.reshape(seqlen_idx_train, (len(seqlen_idx_train),)) # (38, )
 seqlen_idx_test =  [[idx for idx, val in enumerate(data.input_data) if val==test_val] for test_val in X_test] # (20, 1)
 seqlen_idx_test = np.reshape(seqlen_idx_test, (len(seqlen_idx_test),)) # (20, )
+# I need to find train points of split only ..
 
 # Pad data...# needs fixing...
 y_train = data.embedData(y_train, dataType='targets', contents='directions')
@@ -87,21 +88,17 @@ with tf.variable_scope('decoding') as decoding_scope:
     decoder = tf.contrib.seq2seq.BasicDecoder(
         decoder_cell, helper, encoder_state,
         output_layer=projection_layer)
-    # dec_outputs, _ = tf.nn.dynamic_rnn(decoder_cell, decoder_emb_inp, initial_state=encoder_state)
     # Dynamic decoding
     decoder_outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(decoder, ...) # what are these dots sorcery..
     logits = decoder_outputs.rnn_output
 
-# # connect outputs to
-# logits = tf.contrib.layers.fully_connected(
-#     dec_outputs, num_outputs=len(data.char2Num['targets']), activation_fn=None)
+dec_predictions = tf.argmax(logits, -1, output_type=tf.int32)
 
 # but then the pads are part of the loss
 # add 0's to the end along the first dimension (0th), do nothing along te rest 2 dims.
 paddings = [[0,SEQUENCE_LENGTH[1]-tf.shape(logits)[0]], [0,0], [0,0]]
 logits = tf.pad(logits, paddings, 'CONSTANT')
 
-dec_predictions = tf.argmax(logits, -1, output_type=tf.int32)
 
 with tf.name_scope("Optimization"):
     crossent = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -112,6 +109,7 @@ with tf.name_scope("Optimization"):
 
     train_loss = (tf.reduce_sum(crossent * target_weights) /
         BATCH_SIZE)
+    tf.summary.scalar('loss', train_loss)
 
     # Calculate and clip gradients
     params = tf.trainable_variables()
@@ -122,12 +120,8 @@ with tf.name_scope("Optimization"):
     optimizer = tf.train.AdamOptimizer(learning_rate)
     update_step = optimizer.apply_gradients(zip(clipped_gradients, params))
 
-    # loss = tf.contrib.seq2seq.sequence_loss(logits, targets, tf.ones([BATCH_SIZE, tf.shape(outputs)[1]]))
-    tf.summary.scalar('loss', train_loss)
-    # optimizer = tf.train.AdamOptimizer(1e-3).minimize(loss)
-    correct_pred = tf.equal(dec_predictions, targets)
-    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-    tf.summary.scalar('accuracy', accuracy)
+    valid_targets = tf.strided_slice(targets, [0, 0], [tf.shape(dec_predictions)[0], BATCH_SIZE], [1, 1])
+    # correct_pred = tf.equal(dec_predictions, valid_targets)
 
 merged = tf.summary.merge_all()
 # session_conf = tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))
@@ -144,7 +138,7 @@ if __name__ == "__main__":
         num_batches = len(X_train) // BATCH_SIZE
         for epoch_i in range(EPOCHS):
             start_time = time.time()
-            for batch_i, (source_batch, target_batch, batch_seqlen, batch_y_seqlen) in enumerate(data.batch_data(pad_x_train, y_train, seqlen_idx_train, BATCH_SIZE)):
+            for batch_i, (source_batch, target_batch, batch_seqlen, batch_y_seqlen, pos) in enumerate(data.batch_data(pad_x_train, y_train, seqlen_idx_train, BATCH_SIZE)):
                 # time major = True (copying NMT tutorial)
                 # (a) Encoder inputs (encoder lengths = [3, 2]):
                 #   a b c EOS
@@ -166,22 +160,27 @@ if __name__ == "__main__":
                 _, batch_loss, summary = sess.run([update_step, train_loss, merged], feed_dict=food)
                 writer.add_summary(summary, batch_i + num_batches * epoch_i)
 
-            if epoch_i == 0 or epoch_i % 20 == 0:
+            if epoch_i == 0 or epoch_i % 10 == 0:
                 print('Batch: {}'.format(batch_i + num_batches * epoch_i))
                 print('  minibatch_loss: {}'.format(sess.run(train_loss, food)))
-                predict_, acc = sess.run([dec_predictions, accuracy], food)
+                predict_, valid_tar = sess.run([dec_predictions, valid_targets], food)
+                acc = data.calculateAccuracy(valid_tar, predict_, batch_y_seqlen)
+                print('  accuracy: {}'.format(acc))
                 for i, (inp, pred) in enumerate(zip(food[targets].T, predict_.T)):
-                    split_point = food[decoder_lengths][i]
+                    end_point = food[decoder_lengths][i]
+                    split_point = pos[i]
                     print('   sample: {}'.format(i+1))
-                    print('      target start           : >{}'.format(inp[:5]))
-                    print('      predicted start        : >{}'.format(pred[:5]))
-                    print('      target end region    : >{}'.format(inp[split_point-5:split_point+5]))
-                    print('      predicted end region : >{}'.format(pred[split_point-5:split_point+5]))
+                    print('      target start             : >{}'.format(inp[:5]))
+                    print('      predicted start          : >{}'.format(pred[:5]))
+                    print('      point of split target    : >{}'.format(inp[split_point-5:split_point+5]))
+                    print('      point of split predicted : >{}'.format(pred[split_point-5:split_point+5]))
+                    print('      target end region        : >{}'.format(inp[end_point-5:end_point+5]))
+                    print('      predicted end region     : >{}'.format(pred[end_point-5:end_point+5]))
                     if i >= 2:
                         break
                 print()
                 # acc = np.mean(batch_logits.argmax(axis=-1) == target_batch[:, 1:])
-            print('Epoch: {:3} Loss: {:>6.3f} Accuracy: {:>6.4f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, acc, time.time() - start_time))
+            print('Epoch: {:3} Loss: {:>6.3f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, time.time() - start_time))
             print("----------------------------------------------------------------------")
             print()
         writer.close()
