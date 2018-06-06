@@ -136,6 +136,17 @@ class LoadTrajData(object):
 
         return data
 
+    def calculateAccuracy(self, tar_v, pred_v, batch_y_seqlen, acc=[]):    
+        for idx, (val, pred_val) in enumerate(zip(np.swapaxes(tar_v, 0, 1), np.swapaxes(pred_v, 0, 1))):
+            for pos, (v_pt, p_pt) in enumerate(zip(val, pred_val)):
+                if batch_y_seqlen[idx] >= pos:
+                    if v_pt == p_pt:
+                        acc.append(1)
+                    else:
+                        acc.append(0)
+        
+        return np.mean(acc)
+
     def convertChar2Num(self, data_points, dataType, contents='locations'):
         if dataType == 'inputs':
             char2num = self._charToNum(data_points, 'locations')
