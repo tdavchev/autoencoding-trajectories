@@ -26,14 +26,14 @@ seqlen_idx_train = np.reshape(seqlen_idx_train, (len(seqlen_idx_train),)) # (38,
 seqlen_idx_test =  [[idx for idx, val in enumerate(data.input_data) if val==test_val] for test_val in X_test] # (20, 1)
 seqlen_idx_test = np.reshape(seqlen_idx_test, (len(seqlen_idx_test),)) # (20, )
 
-# Pad data..
+# Pad data...# needs fixing...
 y_train = data.embedData(y_train, dataType='targets', contents='directions')
 y_test = data.embedData(y_test, dataType='targets', test=True, contents='directions')
 
-if content_type != '2D-directions':
-    pad_x_train = data.embedData(X_train, contents=content_type, dataType='inputs')
-    pad_x_test = data.embedData(X_test, contents=content_type, test=True)
-    SEQUENCE_LENGTH = [len(pad_x_train[0]), len(y_train[0])-1]
+pad_x_train = data.embedData(X_train, contents=content_type, dataType='inputs')
+pad_x_test = data.embedData(X_test, contents=content_type, test=True)
+
+SEQUENCE_LENGTH = [len(pad_x_train[0]), len(y_train[0])-1]
 
 with tf.name_scope('Feed_tensors'):
     # Tensor where we will feed the data into graph
@@ -49,7 +49,7 @@ with tf.name_scope('Embedding_layers'):
     tf.summary.histogram('input_embedding_var', input_embedding)
     tf.summary.histogram('output_embedding_var', output_embedding)
     # lookup
-    position_input_embed = tf.nn.embedding_lookup(input_embedding, inputs)
+    encoder_emb_inp = tf.nn.embedding_lookup(input_embedding, inputs)
     decoder_emb_inp = tf.nn.embedding_lookup(output_embedding, outputs)
 
 # use 1 cell for both enc and dec !!!
@@ -58,10 +58,11 @@ with tf.variable_scope('cell') as cell_scope:
 
 with tf.variable_scope('encoding') as encoding_scope:
     # lstm_enc = tf.contrib.rnn.BasicLSTMCell(NUM_UNITS)
-    _, encoder_state = tf.nn.dynamic_rnn(cell, inputs=position_input_embed, dtype=tf.float32, sequence_length=encoder_lengths)
+    _, encoder_state = tf.nn.dynamic_rnn(cell, inputs=encoder_emb_inp, dtype=tf.float32, sequence_length=encoder_lengths)
 
 with tf.variable_scope('decoding') as decoding_scope:
-    dec_outputs, _ = tf.nn.dynamic_rnn(cell, decoder_emb_inp, initial_state=encoder_state)
+    # dec_outputs, _ = tf.nn.dynamic_rnn(cell, decoder_emb_inp, initial_state=encoder_state)
+    train_decoder_fn = tf.contrib.seq2seq.simple_decoder_fn_train(encoder_state)
 
 # connect outputs to
 logits = tf.contrib.layers.fully_connected(
@@ -124,7 +125,7 @@ if __name__ == "__main__":
         writer.close()
         saver.save(sess, MODEL_PATH)
         print("Run 'tensorboard --logdir=./logdir' to checkout tensorboard logs.")
-        # {'down': 0, 'up': 1, 'right': 2, 'left': 3, '<END>': 4, '<PAD>': 5, '<GO>': 6}
+
     with tf.Session() as sess:
         print('loading variables...')
         saver.restore(sess, MODEL_PATH)
