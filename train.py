@@ -66,6 +66,7 @@ with tf.variable_scope('decoding') as decoding_scope:
 # connect outputs to
 logits = tf.contrib.layers.fully_connected(
     dec_outputs, num_outputs=len(data.char2Num['targets']), activation_fn=None)
+dec_predictions = tf.argmax(logits, -1, output_type=tf.int32)
 
 # paddings = [[0,0],[0,SEQUENCE_LENGTH[1]-tf.shape(logits)[1]], [0,0]]
 # logits = tf.pad(logits, paddings, 'CONSTANT')
@@ -74,7 +75,7 @@ with tf.name_scope("Optimization"):
     loss = tf.contrib.seq2seq.sequence_loss(logits, targets, tf.ones([BATCH_SIZE, tf.shape(outputs)[1]]))
     tf.summary.scalar('loss', loss)
     optimizer = tf.train.AdamOptimizer(1e-3).minimize(loss)
-    correct_pred = tf.equal(tf.argmax(logits,-1, output_type=tf.int32), targets)
+    correct_pred = tf.equal(dec_predictions, targets)
     accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
     tf.summary.scalar('accuracy', accuracy)
 
@@ -88,25 +89,42 @@ if __name__ == "__main__":
         sess.run(tf.global_variables_initializer())
         writer = tf.summary.FileWriter('./logdir/train_'+strftime("%d_%b_%Y_%H_%M_%S", gmtime()))  # create writer
         writer.add_graph(sess.graph)
+        print("predicted dictionary: {}".format(data.char2Num['targets']))
         print("Starting to learn...")
         num_batches = len(X_train) // BATCH_SIZE
         for epoch_i in range(EPOCHS):
             start_time = time.time()
             for batch_i, (source_batch, target_batch, batch_seqlen, batch_y_seqlen) in enumerate(data.batch_data(pad_x_train, y_train, seqlen_idx_train, BATCH_SIZE)):
-                _, batch_loss, batch_logits, acc, summary = sess.run([optimizer, loss, logits, accuracy, merged],
-                    feed_dict={ inputs: source_batch,
-                                encoder_lengths: batch_seqlen,
-                                decoder_lengths: batch_y_seqlen,
-                                outputs: target_batch[:, :-1],
-                                targets: target_batch[:, 1:]})
+                food = { inputs: source_batch,
+                        encoder_lengths: batch_seqlen,
+                        decoder_lengths: batch_y_seqlen,
+                        outputs: target_batch[:, :-1],
+                        targets: target_batch[:, 1:]}
+                _, batch_loss, summary = sess.run([optimizer, loss, merged],feed_dict=food)
                 writer.add_summary(summary, batch_i + num_batches * epoch_i)
 
-            # acc = np.mean(batch_logits.argmax(axis=-1) == target_batch[:, 1:])
-            print('Epoch {:3} Loss: {:>6.3f} Accuracy: {:>6.4f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, acc, time.time() - start_time))
+            if epoch_i == 0 or (epoch_i + epoch_i) % num_batches == 0:
+                print('Batch: {}'.format(batch_i + num_batches * epoch_i))
+                print('  minibatch_loss: {}'.format(sess.run(loss, food)))
+                predict_, acc = sess.run([dec_predictions, accuracy], food)
+                for i, (inp, pred) in enumerate(zip(food[targets], predict_)):
+                    split_point = food[decoder_lengths][i]
+                    print('   sample: {}'.format(i+1))
+                    print('      target start           : >{}'.format(inp[:5]))
+                    print('      predicted start        : >{}'.format(pred[:5]))
+                    print('      target split region    : >{}'.format(inp[split_point-5:split_point+5]))
+                    print('      predicted split region : >{}'.format(pred[split_point-5:split_point+5]))
+                    if i >= 2:
+                        break
+                print()
+                # acc = np.mean(batch_logits.argmax(axis=-1) == target_batch[:, 1:])
+                print('Epoch: {:3} Loss: {:>6.3f} Accuracy: {:>6.4f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, acc, time.time() - start_time))
+                print("----------------------------------------------------------------------")
+                print()
         writer.close()
         saver.save(sess, MODEL_PATH)
         print("Run 'tensorboard --logdir=./logdir' to checkout tensorboard logs.")
-        
+        # {'down': 0, 'up': 1, 'right': 2, 'left': 3, '<END>': 4, '<PAD>': 5, '<GO>': 6}
     with tf.Session() as sess:
         print('loading variables...')
         saver.restore(sess, MODEL_PATH)
