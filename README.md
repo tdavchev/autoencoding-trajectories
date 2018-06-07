@@ -97,3 +97,4 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 ## Acknowledgments
 
 * [Tensorflow's NMT Tutorial](https://github.com/tensorflow/nmt/tree/tf-1.4)
+* [Ematviev's GitHub repo](https://github.com/ematvey/tensorflow-seq2seq-tutorials/blob/master/2-seq2seq-advanced.ipynb)
