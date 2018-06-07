@@ -139,7 +139,7 @@ def train(args, model, data):
                 print('Batch: {}'.format(batch_i + num_batches * epoch_i))
                 print('  minibatch_loss: {}'.format(sess.run(model.train_loss, food)))
                 predict_, valid_tar = sess.run([model.dec_predictions, model.valid_targets], food)
-                acc = data["data_class"].calculateAccuracy(valid_tar, predict_, batch_y_seqlen)
+                acc = data["data_class"].calculateAccuracy(np.swapaxes(valid_tar, 0, 1), np.swapaxes(predict_, 0, 1), batch_y_seqlen)
                 print('  accuracy: {}'.format(acc))
                 for i, (inp, pred) in enumerate(zip(food[model.targets].T, predict_.T)):
                     end_point = food[model.decoder_lengths][i]
@@ -182,7 +182,7 @@ def infer(args, model, data):
                 model.outputs         : np.swapaxes(dec_input, 0, 1)}
 
         ans = sess.run(model.translations, feed_dict=food)
-        acc = data["data_class"].calculateTestAccuracy(target_batch[:, 1:], ans, test_y_seqlen)
+        acc = data["data_class"].calculateAccuracy(target_batch[:, 1:], ans, test_y_seqlen)
 
         for idx in range(len(ans)):
             print("Predicted: ", end='')
