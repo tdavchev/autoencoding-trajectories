@@ -37,9 +37,9 @@ def main():
     # Dimension of the embeddings parameter
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding dimension for the spatial coordinates')
-    parser.add_argument('--model_path', type=str, default='./save/model',
+    parser.add_argument('--model_path', type=str, default='./models/model-single-actions',  #'./save/model',
                         help='Directory to save model to')
-    parser.add_argument('--mode', type=str, default='train',
+    parser.add_argument('--mode', type=str, default='infer',
                         help='train or infer')
     parser.add_argument('--content_type', type=str, default='directions',
                         help='locations, directions or 2D-directions')
@@ -182,11 +182,20 @@ def infer(args, model, data):
                 model.outputs         : np.swapaxes(dec_input, 0, 1)}
 
         ans = sess.run(model.translations, feed_dict=food)
+        acc = data["data_class"].calculateTestAccuracy(target_batch[:, 1:], ans, test_y_seqlen)
 
-        print(len(ans[0]))
-        for entry in ans[0]:
-            print(entry, end='')
+        for idx in range(len(ans)):
+            print("Predicted: ", end='')
+            for entry in ans[idx]:
+                print(entry, end='')
 
-        print()
+            print()
+            print("target: ", target_batch[idx][1:])
+
+            print()
+            print("------------")
+
+        print('Test accuracy: {:>6.3f}'.format(acc))
+
 if __name__ == "__main__":
     main()
