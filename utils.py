@@ -3,7 +3,7 @@ import numpy as np
 from random import shuffle
 
 class LoadTrajData(object):
-    def __init__(self, contents='directions', tag='single' file_path='/home/todor/Documents/workspace/gym_track_and_detect/timeseries_25_May_2018_18_51_49-walk3.npy'):
+    def __init__(self, contents='directions', tag='single', file_path='./data/timeseries_25_May_2018_18_51_49-walk3.npy'):
         self.char2Num = {}
         self.seqlen = {'inputs':[], 'targets':[]}
         self.max_len = {'inputs':0, 'targets':0}
@@ -77,7 +77,7 @@ class LoadTrajData(object):
         for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
             input_data.append("")
             target_data.append("")
-            if self.tag != 'single' # use labels for every timestep
+            if self.tag != 'single': # use labels for every timestep
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
                     input_data[br] += str(x)+","+str(y) + " "
                     if count <= self.points_of_split[br]:
