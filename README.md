@@ -76,13 +76,10 @@ Project File Structure:
 -data
 ---timeseries_25_May_2018_18_51_49-walk3.npy
 -models
----checkpoint
----model.data-00000-of-00001
----model.index
----model.meta
+---model.py
+-utils
+---utils.py
 -main.py
--utils.py
--model.py
 -README.md
 ```
 
