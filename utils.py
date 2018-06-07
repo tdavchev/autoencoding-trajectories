@@ -3,11 +3,12 @@ import numpy as np
 from random import shuffle
 
 class LoadTrajData(object):
-    def __init__(self, contents='directions', file_path='/home/todor/Documents/workspace/gym_track_and_detect/timeseries_25_May_2018_18_51_49-walk3.npy'):
+    def __init__(self, contents='directions', tag='single' file_path='/home/todor/Documents/workspace/gym_track_and_detect/timeseries_25_May_2018_18_51_49-walk3.npy'):
         self.char2Num = {}
         self.seqlen = {'inputs':[], 'targets':[]}
         self.max_len = {'inputs':0, 'targets':0}
         self.contents = contents
+        self.tag = tag
         self.input_data, self.target_data = self.loadData(file_path)
     
     def toStringLocations(self, data):
@@ -76,14 +77,20 @@ class LoadTrajData(object):
         for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
             input_data.append("")
             target_data.append("")
-            for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                input_data[br] += str(x)+","+str(y) + " "
-                if count <= self.points_of_split[br]:
-                    target_data[br] += label[1] + " "
-                else:
-                    target_data[br] += label[2] + " "
+            if self.tag != 'single' # use labels for every timestep
+                for count, (x, y) in enumerate(zip(entry[0], entry[1])):
+                    input_data[br] += str(x)+","+str(y) + " "
+                    if count <= self.points_of_split[br]:
+                        target_data[br] += label[1] + " "
+                    else:
+                        target_data[br] += label[2] + " "
                     
-            target_data[br] = target_data[br][:-1] # account for empty space in the end..
+                target_data[br] = target_data[br][:-1] # account for empty space in the end..
+            else:
+                for count, (x, y) in enumerate(zip(entry[0], entry[1])):
+                    input_data[br] += str(x)+str(y) + " "
+
+                target_data[br] = label[1] + " " + label[2]
 
             self.seqlen['inputs'].append(len(input_data[br]))
             # the +1 accounts for the <GO> symbol
@@ -136,7 +143,7 @@ class LoadTrajData(object):
 
         return data
 
-    def calculateAccuracy(self, tar_v, pred_v, batch_y_seqlen, acc=[]):    
+    def calculateAccuracy(self, tar_v, pred_v, batch_y_seqlen, acc=[]):
         for idx, (val, pred_val) in enumerate(zip(np.swapaxes(tar_v, 0, 1), np.swapaxes(pred_v, 0, 1))):
             for pos, (v_pt, p_pt) in enumerate(zip(val, pred_val)):
                 if batch_y_seqlen[idx] >= pos:
@@ -145,6 +152,7 @@ class LoadTrajData(object):
                     else:
                         acc.append(0)
         
+        # this should compute per batch not over all.
         return np.mean(acc)
 
     def convertChar2Num(self, data_points, dataType, contents='locations'):
@@ -343,5 +351,5 @@ class LoadTrajData(object):
         start = 0
 
         while start + batch_size <= len(data):
-            yield data[start:start+batch_size], labels[start:start+batch_size], seqlen[start:start+batch_size], y_seqlen[start:start+batch_size], p_of_split[start:start+batch_size]
+            yield data[start:start+batch_size], labels[start:start+batch_size], seqlen[start:start+batch_size], y_seqlen[start:start+batch_size], p_of_split[start:start+batch_size], shuffle[start:start+batch_size]
             start += batch_size
