@@ -4,10 +4,11 @@ import argparse
 import numpy as np
 import tensorflow as tf
 
-from utils import LoadTrajData
 from time import gmtime, strftime
-from model import Seq2seqModel
 from sklearn.model_selection import train_test_split
+
+from utils.utils import LoadTrajData
+from models.model import Seq2seqModel
 
 def main():
     '''
@@ -36,12 +37,14 @@ def main():
     # Dimension of the embeddings parameter
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding dimension for the spatial coordinates')
-    parser.add_argument('--model_path', type=str, default='./models/model',
+    parser.add_argument('--model_path', type=str, default='./save/model',
                         help='Directory to save model to')
     parser.add_argument('--mode', type=str, default='train',
                         help='train or infer')
     parser.add_argument('--content_type', type=str, default='directions',
                         help='locations, directions or 2D-directions')
+    parser.add_argument('--tag_type', type=str, default='single',
+                        help='Single tag per trajectory sequence or Multiple tags for each step.')
     args = parser.parse_args()
     
     start(args)
@@ -67,7 +70,7 @@ def start(args):
 
 def load(args):
     # load data
-    data = LoadTrajData(contents=args.content_type)
+    data = LoadTrajData(contents=args.content_type, tag=args.tag_type)
     x_train, x_test, y_train, y_test = train_test_split(data.input_data, data.target_data, test_size=0.33, random_state=42)
 
     # Due to shuffle the sequences are not as they are stored in data.seqlen
