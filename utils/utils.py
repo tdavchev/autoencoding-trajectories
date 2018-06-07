@@ -144,7 +144,7 @@ class LoadTrajData(object):
         return data
 
     def calculateAccuracy(self, tar_v, pred_v, batch_y_seqlen, acc=[]):
-        for idx, (val, pred_val) in enumerate(zip(np.swapaxes(tar_v, 0, 1), np.swapaxes(pred_v, 0, 1))):
+        for idx, (val, pred_val) in enumerate(zip(tar_v, pred_v)):
             for pos, (v_pt, p_pt) in enumerate(zip(val, pred_val)):
                 if batch_y_seqlen[idx] >= pos:
                     if v_pt == p_pt:
