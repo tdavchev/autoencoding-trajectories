@@ -40,6 +40,36 @@ class LoadTrajData(object):
 
         return input_data, target_data
 
+    def toSlopeWithDirections(self, data):
+        input_data = []
+        target_data = []
+        br = 0
+        for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
+            input_data.append([])
+            target_data.append("")
+            for count, (x, y) in enumerate(zip(entry[0], entry[1])):
+                input_data[br].append(x-y)
+                if count <= self.points_of_split[br]:
+                    target_data[br] += label[1] + " "
+                else:
+                    target_data[br] += label[2] + " "
+                    
+            target_data[br] = target_data[br][:-1] # account for empty space in the end..
+
+            self.seqlen['inputs'].append(len(input_data[br]))
+            # the +1 accounts for the <GO> symbol
+            self.seqlen['targets'].append(len(target_data[br].split()) + 1)
+
+            if self.max_len['inputs'] <= len(input_data[br]):
+                self.max_len['inputs'] = len(input_data[br])
+
+            if self.max_len['targets'] <= len(target_data[br].split()):
+                self.max_len['targets'] = len(target_data[br].split())
+
+            br += 1
+
+        return input_data, target_data
+
     def toDwithDirections(self, data):
         input_data = []
         target_data = []
@@ -79,7 +109,8 @@ class LoadTrajData(object):
             target_data.append("")
             if self.tag == 'every': # use labels for every timestep
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                    input_data[br] += str(x)+","+str(y) + " "
+                    # input_data[br] += str(x)+","+str(y) + " "
+                    input_data[br] += str(x) + str(y) + " "
                     if count <= self.points_of_split[br]:
                         target_data[br] += label[1] + " "
                     else:
@@ -88,7 +119,7 @@ class LoadTrajData(object):
                 target_data[br] = target_data[br][:-1] # account for empty space in the end..
             elif self.tag == 'single':
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                    input_data[br] += str(x)+str(y) + " "
+                    input_data[br] += str(x) + str(y) + " "
 
                 target_data[br] = label[1] + " " + label[2]
 
@@ -145,13 +176,17 @@ class LoadTrajData(object):
 
     def calculateAccuracy(self, tar_v, pred_v, batch_y_seqlen, acc=[]):
         for idx, (val, pred_val) in enumerate(zip(tar_v, pred_v)):
-            for pos, (v_pt, p_pt) in enumerate(zip(val, pred_val)):
+            predicted_length = len(pred_val)
+            for pos, (v_pt, p_pt) in enumerate(zip(val[:predicted_length], pred_val)):
                 if batch_y_seqlen[idx] >= pos:
                     if v_pt == p_pt:
                         acc.append(1)
                     else:
                         acc.append(0)
-        
+            # treat mispredicted end of sentence as a mistake
+            for _ in range(len(val[predicted_length:])):
+                acc.append(0)
+
         # this should compute per batch not over all.
         return np.mean(acc)
 
