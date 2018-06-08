@@ -37,7 +37,7 @@ def main():
     # Dimension of the embeddings parameter
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding dimension for the spatial coordinates')
-    parser.add_argument('--model_path', type=str, default='./models/model-single-actions',  #'./save/model',
+    parser.add_argument('--model_path', type=str, default='./save/single-nocommas/model',  #'./save/model',
                         help='Directory to save model to')
     parser.add_argument('--mode', type=str, default='infer',
                         help='train or infer')
@@ -71,7 +71,7 @@ def start(args):
 def load(args):
     # load data
     data = LoadTrajData(contents=args.content_type, tag=args.tag_type)
-    x_train, x_test, y_train, y_test = train_test_split(data.input_data, data.target_data, test_size=0.33, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(data.input_data, data.target_data, test_size=0.2, random_state=42)
 
     # Due to shuffle the sequences are not as they are stored in data.seqlen
     # we need the data.seqlen ids for all items in train and test.
@@ -120,6 +120,7 @@ def train(args, model, data):
         writer.add_graph(sess.graph)
         print("predicted dictionary: {}".format(data["data_class"].char2Num['targets']))
         print("Starting to learn...")
+        print("----------------------------------------------------------------------")
         num_batches = len(data["x_train"]) // args.batch_size
         for epoch_i in range(args.epochs):
             start_time = time.time()
@@ -134,6 +135,8 @@ def train(args, model, data):
                         model.targets         : np.swapaxes(target_batch[:, 1:], 0, 1)}
                 _, batch_loss, summary = sess.run([model.update_step, model.train_loss, model.merged], feed_dict=food)
                 writer.add_summary(summary, batch_i + num_batches * epoch_i)
+
+            print('Epoch: {:3} Loss: {:>6.3f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, time.time() - start_time))
 
             if epoch_i == 0 or epoch_i % 10 == 0:
                 print('Batch: {}'.format(batch_i + num_batches * epoch_i))
@@ -155,7 +158,6 @@ def train(args, model, data):
                     if i >= 2:
                         break
                 print()
-            print('Epoch: {:3} Loss: {:>6.3f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, time.time() - start_time))
             print("----------------------------------------------------------------------")
             print()
         writer.close()
@@ -177,11 +179,17 @@ def infer(args, model, data):
         dec_input = np.zeros((len(target_batch), len(target_batch[0]))) + data["data_class"].char2Num['targets']['<GO>']
         print("dec_input: ", dec_input.shape)
         print("source_batch: ", source_batch.shape)
-        food = {model.encoder_lengths : test_seqlen,
-                model.inputs          : np.swapaxes(source_batch, 0, 1),
-                model.outputs         : np.swapaxes(dec_input, 0, 1)}
+        ans = []
+        # infer separately otherwise every output will have the same size
+        # the inference helper is run until all sequences output end statement.
+        for i in range(target_batch.shape[0]):
+            food = {model.encoder_lengths : [test_seqlen[i]],
+                    model.inputs          : np.reshape(source_batch[i, :], (source_batch[i, :].shape[0], 1)),#np.swapaxes(source_batch, 0, 1),
+                    model.outputs         : np.reshape(dec_input[i, :], (dec_input[i, :].shape[0], 1))}#np.swapaxes(dec_input, 0, 1)}
 
-        ans = sess.run(model.translations, feed_dict=food)
+            translated = sess.run(model.translations, feed_dict=food)
+            ans.append(translated[0])
+
         acc = data["data_class"].calculateAccuracy(target_batch[:, 1:], ans, test_y_seqlen)
 
         for idx in range(len(ans)):
