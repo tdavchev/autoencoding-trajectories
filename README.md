@@ -22,7 +22,13 @@ pip install numpy, scikit-learn, argparse
 
 ### Installing
 
-A step by step series of examples that tell you how to get a development env running
+A step by step series of examples that tell you how to get a development env running.
+
+Download the repository.
+
+```
+git clone git@github.com:yadrimz/autoencoding-trajectories.git
+```
 
 You can train and infer. 
 Run help for full documentation.
