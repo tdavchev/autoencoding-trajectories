@@ -9,6 +9,11 @@ from sklearn.model_selection import train_test_split
 
 from utils.utils import LoadTrajData
 from models.model import Seq2seqModel
+from models.model2 import TrajNetwork2D
+from models.model3 import TrajNetwork1D
+
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 def main():
     '''
@@ -16,7 +21,7 @@ def main():
     '''
     parser = argparse.ArgumentParser()
     # RNN size parameter (dimension of the output/hidden state)
-    parser.add_argument('--num_units', type=int, default=15,
+    parser.add_argument('--num_units', type=int, default=64,
                         help='size of RNN hidden state')
     # Number of layers parameter
     parser.add_argument('--num_layers', type=int, default=1,
@@ -37,29 +42,53 @@ def main():
     # Dimension of the embeddings parameter
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding dimension for the spatial coordinates')
-    parser.add_argument('--model_path', type=str, default='./save/single-nocommas/model',  #'./save/model',
+    parser.add_argument('--model_path', type=str, default='./save/single-2d/model',  #'./save/model',
                         help='Directory to save model to')
-    parser.add_argument('--mode', type=str, default='infer',
+    parser.add_argument('--mode', type=str, default='train',
                         help='train or infer')
-    parser.add_argument('--content_type', type=str, default='directions',
+    parser.add_argument('--content_type', type=str, default='2D-directions',
                         help='locations, directions or 2D-directions')
     parser.add_argument('--tag_type', type=str, default='single',
                         help='Single tag per trajectory sequence or Multiple tags for each step.')
+    parser.add_argument('--padas', type=str, default='numeric',
+                        help='Type of padding (text or numeric).')
+    parser.add_argument('--network', type=str, default='TrajNetwork1D',
+                        help='Type of network (Seq2Seq, TrajNetwork1D or TrajNetwork2D).')
     args = parser.parse_args()
-    
+
     start(args)
 
 def start(args):
     data = load(args)
 
-    model = Seq2seqModel(
-        data["data_class"].char2Num,
-        args.mode,
-        args.num_units,
-        args.embed_size,
-        args.batch_size,
-        args.max_gradient_norm,
-        args.learning_rate)
+    if args.content_type == '2D-directions':
+        inpt = 'actions'
+    else:
+        inpt = 'inputs'
+
+    if args.network == 'Seq2Seq':
+        model = Seq2seqModel(
+            data["data_class"].char2Num,
+            args.mode,
+            args.num_units,
+            args.embed_size,
+            args.batch_size,
+            args.max_gradient_norm,
+            args.learning_rate)
+        infer = inferSeq2Seq
+        train = trainSeq2Seq
+    elif args.network == 'TrajNetwork2D':
+        model = TrajNetwork2D(
+            data["data_class"].char2Num,
+            data["data_class"].max_len['inputs'])
+        infer = sample2D
+        train = train2D
+    elif args.network == 'TrajNetwork1D':
+        model = TrajNetwork1D(
+            data["data_class"].char2Num,
+            data["data_class"].max_len['inputs'])
+        infer = sample1D
+        train = train1D
 
     model.buildModel()
 
@@ -82,24 +111,217 @@ def load(args):
     # I need to find train points of split only ..
 
     # Pad data...# needs fixing...
-    y_train = data.embedData(y_train, dataType='targets', contents='directions')
-    y_test = data.embedData(y_test, dataType='targets', test=True, contents='directions')
-
-    x_train = data.embedData(x_train, contents=args.content_type, dataType='inputs')
-    x_test = data.embedData(x_test, contents=args.content_type, test=True)
+    if args.content_type != '2D-directions':
+        y_train = data.embedData(y_train, dataType='targets', contents=args.content_type)
+        y_test = data.embedData(y_test, dataType='targets', test=True, contents=args.content_type)
+        x_train = data.embedData(x_train, idxes=seqlen_idx_train, contents=args.content_type, dataType='inputs', padas=args.padas)
+        x_test = data.embedData(x_test, idxes=seqlen_idx_test, contents=args.content_type, test=True, padas=args.padas)
+        act_train = []
+        act_test = []
+    else:
+        x_train, act_train = data.embedData(x_train, idxes=seqlen_idx_train, contents=args.content_type, dataType='inputs', padas=args.padas)
+        x_test, act_test = data.embedData(x_test, idxes=seqlen_idx_test, contents=args.content_type, test=True, padas=args.padas)
 
     return {
         "data_class": data,
         "x_train": x_train,
         "x_test": x_test,
+        "act_train": act_train,
+        "act_test": act_test,
         "y_train": y_train,
         "y_test": y_test,
         "seqlen_idx_train": seqlen_idx_train,
         "seqlen_idx_test": seqlen_idx_test
     }
 
+def sample_gaussian_1d(mean, cov, samples):
+    '''
+    Function to sample a point from a given 2D normal distribution
+    params:
+    mux : mean of the distribution in x
+    muy : mean of the distribution in y
+    sx : std dev of the distribution in x
+    sy : std dev of the distribution in y
+    rho : Correlation factor of the distribution
+    '''
+    x = np.random.normal(mean, cov, samples)
+    return x
 
-def train(args, model, data):
+def sample1D(args, model, data):
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        print('loading variables...')
+        saver.restore(sess, args.model_path)
+
+        test_data = \
+            next(data["data_class"].batch_data(data["x_test"], data["y_test"], data["seqlen_idx_test"], args.batch_size))
+
+        food = {model.input_lengths   : test_data["seqlen"],
+                model.inputs          : test_data["inputs"]}
+        
+        o_mux, o_sx = sess.run([model.mux, model.sx], feed_dict=food)
+        print("actions", test_data["actions"][0])
+
+        ans = []
+        for i in range(1000):
+            ans.append(sample_gaussian_1d(o_mux[0][0], o_sx[0][0], 1))
+
+        print(test_data["shuffle_ids"])
+
+        sns.set(color_codes=True)
+        sns.distplot(ans, label='prediction')
+        sns.rugplot([test_data["targets"][0]], color='indianred', label='target')
+        plt.title("entry id: "+ str(test_data["shuffle_ids"][0]))
+        plt.ylabel('mass')
+        plt.xlabel('time')
+        plt.xlim((0, 1))
+        plt.legend()
+
+        plt.show()
+
+def train1D(args, model, data):
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+    # with tf.Session(config=session_config) as sess:
+        sess.run(tf.global_variables_initializer())
+        writer = tf.summary.FileWriter('./logdir/train_'+strftime("%d_%b_%Y_%H_%M_%S", gmtime()))  # create writer
+        writer.add_graph(sess.graph)
+        print("Starting to learn...")
+        print("----------------------------------------------------------------------")
+        num_batches = len(data["x_train"]) // args.batch_size
+        for epoch_i in range(args.epochs):
+            start_time = time.time()
+            for batch_i, batch_data in \
+                    enumerate(data["data_class"].batch_data(data["x_train"], data["y_train"], data["seqlen_idx_train"], args.batch_size, data["act_train"])):
+                i = 0
+                for act in np.swapaxes(batch_data["actions"], 0, 1):
+                    if i < 1:
+                        food = {model.input_lengths   : batch_data["seqlen"],
+                                model.inputs          : batch_data["inputs"],
+                                model.targets         : np.array(batch_data["targets"]).reshape((10, 1))}
+                        _, batch_loss, summary = sess.run([model.update_step, model.train_loss, model.merged], feed_dict=food)
+                        writer.add_summary(summary, batch_i + num_batches * epoch_i)    
+                        i+= 1
+            print('Epoch: {:3} Loss: {:>6.3f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, time.time() - start_time))
+            print("----------------------------------------------------------------------")
+            print()
+        writer.close()
+        saver.save(sess, args.model_path)
+        print("model saved to {}".format(args.model_path))
+        print("Run 'tensorboard --logdir=./logdir' to checkout tensorboard logs.")
+
+
+def sample_gaussian_2d(mux, muy, sx, sy, rho):
+    '''
+    Function to sample a point from a given 2D normal distribution
+    params:
+    mux : mean of the distribution in x
+    muy : mean of the distribution in y
+    sx : std dev of the distribution in x
+    sy : std dev of the distribution in y
+    rho : Correlation factor of the distribution
+    '''
+    # Extract mean
+    mean = [mux, muy]
+    # Extract covariance matrix
+    cov = [[sx*sx, rho*sx*sy], [rho*sx*sy, sy*sy]]
+    # Sample a point from the multivariate normal distribution
+    x = np.random.multivariate_normal(mean, cov, 1)
+    return x[0][0], x[0][1]
+
+def gaussian_2d(x, y, x0, y0, xsig, ysig, corr):
+    return np.exp((-0.5*(1-corr**2)) * (((x-x0) / xsig)**2 + ((y-y0) / ysig)**2 - (2*corr*(x-x0)*(y-y0)/xsig*ysig))) / (2*np.pi*xsig*ysig*np.sqrt(1-corr**2))
+
+def sample2D(args, model, data):
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        print('loading variables...')
+        saver.restore(sess, args.model_path)
+
+        test_data = \
+            next(data["data_class"].batch_data(data["x_test"], data["y_test"], data["seqlen_idx_test"], args.batch_size))
+
+        food = {model.input_lengths   : test_data["seqlen"],
+                model.inputs          : test_data["inputs"]}
+        o_mux, o_muy, o_sx, o_sy, o_corr = sess.run([model.mux, model.muy, model.sx, model.sy, model.corr], feed_dict=food)
+        next_x, next_y = sample_gaussian_2d(o_mux[0][0], o_muy[0][0], o_sx[0][0], o_sy[0][0], o_corr[0][0])
+        
+        print("next_x, next_y :", (next_x, next_y))
+        print("target: ", test_data["targets"][0])
+        print("o_mux, o_muy :", (o_mux[0][0], o_mux[0][0]))
+        print("o_sx, o_sy :", (o_sx[0][0], o_sy[0][0]))
+        print("o_corr :", o_corr[0][0])
+
+        print("actions", test_data["actions"][0])
+
+        ans = []
+        for p in range(200):
+            ans.append(sample_gaussian_2d(o_mux[0][0], o_muy[0][0], o_sx[0][0], o_sy[0][0], o_corr[0][0]))
+
+        ans = np.array(ans)
+        x = np.reshape(ans[:, 0], (200,)).tolist()
+        y = np.reshape(ans[:, 1], (200,)).tolist()
+
+        X, Y = np.meshgrid(x, y)
+
+        Z = gaussian_2d(X, Y, o_mux[0][0], o_muy[0][0], o_sx[0][0], o_sy[0][0], o_corr[0][0])
+
+        plt.contourf(X, Y, Z, cmap='Blues')
+        plt.plot(test_data["inputs"][0][:test_data["seqlen"][0], 0], test_data["inputs"][0][:test_data["seqlen"][0], 1], 'r')
+        # plt.plot(ans[:, 0], ans[:, 1])
+        plt.show()
+
+def train2D(args, model, data):
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+    # with tf.Session(config=session_config) as sess:
+        sess.run(tf.global_variables_initializer())
+        writer = tf.summary.FileWriter('./logdir/train_'+strftime("%d_%b_%Y_%H_%M_%S", gmtime()))  # create writer
+        writer.add_graph(sess.graph)
+        # print("predicted dictionary: {}".format(data["data_class"].char2Num['targets']))
+        print("Starting to learn...")
+        print("----------------------------------------------------------------------")
+        num_batches = len(data["x_train"]) // args.batch_size
+        for epoch_i in range(args.epochs):
+            start_time = time.time()
+            # {
+            #     "input": data[start:start+batch_size],
+            #     "actions": actions[start:start+batch_size],
+            #     "targets": labels[start:start+batch_size],
+            #     "seqlen": seqlen[start:start+batch_size],
+            #     "seqlen_a": a_seqlen[start:start+batch_size],
+            #     "seqlen_y": y_seqlen[start:start+batch_size],
+            #     "points_of_split": p_of_split[start:start+batch_size],
+            #     "shuffle_ids": shuffle[start:start+batch_size]
+            # }
+            for batch_i, batch_data in \
+                    enumerate(data["data_class"].batch_data(data["x_train"], data["y_train"], data["seqlen_idx_train"], args.batch_size, data["act_train"])):
+                i = 0
+                # new_out =[]
+                # for b_no, elem in enumerate(batch_data["inputs"]):
+                #     # print(np.array(elem[:batch_data["seqlen"][b_no]]).shape)
+                #     new_out.append(elem[:batch_data["seqlen"][b_no]])
+
+                # new_out = np.array(new_out)
+                for act, targ in zip(np.swapaxes(batch_data["actions"], 0, 1), np.swapaxes(batch_data["targets"], 0, 1)):
+                    if i < 1:
+                        food = {model.input_lengths   : batch_data["seqlen"],
+                                model.inputs          : batch_data["inputs"],
+                                model.targets         : targ}
+                        _, batch_loss, summary = sess.run([model.update_step, model.train_loss, model.merged], feed_dict=food)
+                        writer.add_summary(summary, batch_i + num_batches * epoch_i)
+                            
+                        # next_x, next_y = sample_gaussian_2d(o_mux[0][0], o_muy[0][0], o_sx[0][0], o_sy[0][0], o_corr[0][0])
+                        i+= 1
+            print('Epoch: {:3} Loss: {:>6.3f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, time.time() - start_time))
+            print("----------------------------------------------------------------------")
+            print()
+        writer.close()
+        saver.save(sess, args.model_path)
+        print("model saved to {}".format(args.model_path))
+        print("Run 'tensorboard --logdir=./logdir' to checkout tensorboard logs.")
+
+def trainSeq2Seq(args, model, data):
     # time major = True (copying NMT tutorial)
     # (a) Encoder inputs (encoder lengths = [3, 2]):
     #   a b c EOS
@@ -165,7 +387,7 @@ def train(args, model, data):
         print("model saved to {}".format(args.model_path))
         print("Run 'tensorboard --logdir=./logdir' to checkout tensorboard logs.")
 
-def infer(args, model, data):
+def inferSeq2Seq(args, model, data):
     saver = tf.train.Saver()
     with tf.Session() as sess:
         print('loading variables...')
