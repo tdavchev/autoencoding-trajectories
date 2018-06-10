@@ -5,11 +5,11 @@ from random import shuffle
 class LoadTrajData(object):
     def __init__(self, contents='directions', tag='single', file_path='./data/timeseries_25_May_2018_18_51_49-walk3.npy'):
         self.char2Num = {}
-        self.seqlen = {'inputs':[], 'targets':[]}
-        self.max_len = {'inputs':0, 'targets':0}
+        self.seqlen = {'inputs':[], 'targets':[], 'actions':[]}
+        self.max_len = {'inputs':0, 'targets':0, 'actions':0}
         self.contents = contents
         self.tag = tag
-        self.input_data, self.target_data = self.loadData(file_path)
+        self.input_data, self.action_data, self.target_data = self.loadData(file_path)
     
     def toStringLocations(self, data):
         input_data = []
@@ -40,65 +40,56 @@ class LoadTrajData(object):
 
         return input_data, target_data
 
-    def toSlopeWithDirections(self, data):
-        input_data = []
-        target_data = []
-        br = 0
-        for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
-            input_data.append([])
-            target_data.append("")
-            for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                input_data[br].append(x-y)
-                if count <= self.points_of_split[br]:
-                    target_data[br] += label[1] + " "
-                else:
-                    target_data[br] += label[2] + " "
-                    
-            target_data[br] = target_data[br][:-1] # account for empty space in the end..
-
-            self.seqlen['inputs'].append(len(input_data[br]))
-            # the +1 accounts for the <GO> symbol
-            self.seqlen['targets'].append(len(target_data[br].split()) + 1)
-
-            if self.max_len['inputs'] <= len(input_data[br]):
-                self.max_len['inputs'] = len(input_data[br])
-
-            if self.max_len['targets'] <= len(target_data[br].split()):
-                self.max_len['targets'] = len(target_data[br].split())
-
-            br += 1
-
-        return input_data, target_data
-
     def toDwithDirections(self, data):
         input_data = []
         target_data = []
+        actions_data = []
         br = 0
         for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
             input_data.append([])
-            target_data.append("")
-            for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                input_data[br].append([x, y])
-                if count <= self.points_of_split[br]:
-                    target_data[br] += label[1] + " "
-                else:
-                    target_data[br] += label[2] + " "
-                    
-            target_data[br] = target_data[br][:-1] # account for empty space in the end..
+            actions_data.append("")
+            target_data.append(0.0)
+            if self.tag == 'every': # use labels for every timestep
+                for count, (x, y) in enumerate(zip(entry[0], entry[1])):
+                    # input_data[br] += str(x)+","+str(y) + " "
+                    input_data[br].append([x, y])
+                    if count <= self.points_of_split[br]:
+                        actions_data[br] += label[1] + " "
+                    else:
+                        actions_data[br] += label[2] + " "                        
+
+                actions_data[br] = actions_data[br][:-1] # account for empty space in the end..
+
+            elif self.tag == 'single':
+                for count, (x, y) in enumerate(zip(entry[0], entry[1])):
+                    input_data[br].append([x - entry[0][0], y - entry[1][0]])
+
+                actions_data[br] = label[1] + " " + label[2]
+
+            target_data[br] = self.points_of_split[br]/len(input_data[br])
+
+            # target_data[br].append([entry[0][self.points_of_split[br]] - entry[0][0], entry[1][self.points_of_split[br]] - entry[1][0]])
+            # target_data[br].append([entry[0][self.points_of_split[br]] - entry[0][0], entry[1][self.points_of_split[br]] - entry[1][0]])
 
             self.seqlen['inputs'].append(len(input_data[br]))
+            # self.seqlen['targets'].append(len(target_data[br]))
+            self.seqlen['targets'].append(1)
             # the +1 accounts for the <GO> symbol
-            self.seqlen['targets'].append(len(target_data[br].split()) + 1)
+            self.seqlen['actions'].append(len(actions_data[br].split()) + 1)
 
             if self.max_len['inputs'] <= len(input_data[br]):
                 self.max_len['inputs'] = len(input_data[br])
 
-            if self.max_len['targets'] <= len(target_data[br].split()):
-                self.max_len['targets'] = len(target_data[br].split())
+            if self.max_len['actions'] <= len(actions_data[br].split()):
+                self.max_len['actions'] = len(actions_data[br].split())
+
+            # if self.max_len['targets'] <= len(target_data[br]):
+            #     self.max_len['targets'] = len(target_data[br])
+            self.max_len['targets'] = 1
 
             br += 1
 
-        return input_data, target_data
+        return input_data, actions_data, target_data
 
     def toDirections(self, data):
         input_data = []
@@ -191,15 +182,18 @@ class LoadTrajData(object):
         return np.mean(acc)
 
     def convertChar2Num(self, data_points, dataType, contents='locations'):
-        if dataType == 'inputs':
-            char2num = self._charToNum(data_points, 'locations')
+        if dataType == 'inputs' or dataType == 'actions':
+            if contents == 'directions':
+                contents = 'locations'
+
+            char2num = self._charToNum(data_points, contents)
         else:
             char2num = self._charToNum(data_points, contents)
 
         return char2num
 
     def convertData(self, data_points, _char2num, dataType, contents, pad=True):
-        if dataType == 'targets' and contents == 'directions':
+        if (dataType == 'targets' and contents == 'directions') or (dataType == 'actions' and contents == '2D-directions'):
             if pad:
                 pt = [[_char2num[p_] for p_ in point.split()] + [_char2num['<END>']] + [_char2num['<PAD>']]*(self.max_len[dataType] - len(point.split())) for point in data_points]
             else:
@@ -231,23 +225,26 @@ class LoadTrajData(object):
 
         return np.array(self.convertData(data_points, _char2num, dataType, contents, pad))
 
-    def embedAsAsPoint(self, data_points, dataType='inputs'):
+    def embedAsAsPoint(self, data_points, contents, idxes=[], dataType='inputs', test=False, pad=True):
         pt = [list(point) + [[0,0]]*(self.max_len[dataType] - len(point)) for point in data_points]
-        return np.array(pt)
+        if contents == '2D-directions':
+            acts = [self.action_data[i] for i in idxes]
+            a_pt = self.embedAsString(acts, contents, 'actions', test, pad)
+        return [np.array(pt), np.array(a_pt)]
 
-    def embedData(self, data_points, contents='locations', padas='text', dataType='inputs', test=False, pad=True):
+    def embedData(self, data_points, idxes=[], contents='locations', padas='text', dataType='inputs', test=False, pad=True):
         # if target is point then needs implementing
         if padas == 'text':
             pt = self.embedAsString(data_points, contents, dataType, test, pad)
-        elif padas == 'points':
-            pt = self.embedAsAsPoint(data_points)
+        elif padas == 'numeric':
+            pt = self.embedAsAsPoint(data_points, contents, idxes, test=test, pad=pad)
 
         return pt
 
     def _charToNum(self, data_points, contents='locations'):
         if contents == 'locations':
             u_characters = set(' '.join(data_points))
-        elif contents == 'directions':
+        elif contents == 'directions' or '2D-directions':
             u_characters = set(["left", "right", "up", "down"])
         return dict(zip(u_characters, range(1, len(u_characters) + 1))) # the <PAD> is 0
 
@@ -322,69 +319,93 @@ class LoadTrajData(object):
             4656-4535   # 28
         ]
         reversed_dicto = [
-            622-420,   #  0
-            4898-4835, #  1
-            5404-5326, #  2
-            542-420,   #  3
-            522-270,   #  4
-            2742-2563, #  5
-            2622-2563, #  6
-            4062-3842, #  7
-            3950-3842, #  8
-            858-636,   #  9
-            758-636,   # 10
-            1858-1490, # 11
-            1658-1490, # 12
-            1658-1490, # 13
-            1658-1490, # 14
-            3050-2741, # 15
-            3050-2741, # 16
-            2950-2741, # 17
-            4618-4478, # 18
-            4638-4478, # 19
-            3575-3105, # 20
-            3575-3105, # 21
-            3575-3105, # 22
-            3575-3105, # 23
-            2130-1860, # 24
-            2030-1860, # 25
-            4638-4480, # 26
-            2552-2155, # 27
-            4732-4656  # 28
+            622-420,   #  0 29
+            4898-4835, #  1 30
+            5404-5326, #  2 31
+            542-420,   #  3 32
+            522-420,   #  4 33
+            2742-2563, #  5 34
+            2622-2563, #  6 35
+            4062-3842, #  7 36
+            3950-3842, #  8 37
+            858-636,   #  9 38
+            758-636,   # 10 39
+            1858-1490, # 11 40
+            1658-1490, # 12 41
+            1658-1490, # 13 42
+            1658-1490, # 14 43
+            3050-2741, # 15 44
+            3050-2741, # 16 45
+            2950-2741, # 17 46
+            4618-4478, # 18 47
+            4638-4478, # 19 48
+            3575-3105, # 20 49
+            3575-3105, # 21 50
+            3375-3105, # 22 51
+            3375-3105, # 23 52
+            2130-1860, # 24 53
+            2030-1860, # 25 54
+            4638-4480, # 26 55
+            2552-2155, # 27 56
+            4732-4656  # 28 57
         ]
 
         dicto = np.concatenate((dicto, reversed_dicto))
         return dicto
 
+    def normalise(self, x, y):
+        return [(x-np.mean(x))/np.std(x), (y-np.mean(y))/np.std(y)]
+
     def loadData(self, file_path):
         raw_data = np.load(file_path)
         raw_x, raw_y = raw_data[:, 0], raw_data[:, 1]
         raw_y = np.abs(raw_y - np.max(raw_y)) # flip it
+        raw_x, raw_y = self.normalise(raw_x, raw_y)
         self.points_of_split = self.getSplitPoints()
         split_data = self.splitData(raw_x, raw_y)
         data = self.augment(split_data)
         if self.contents == 'locations':
             input_data, target_data = self.toStringLocations(data)
+            action_data = target_data
         elif self.contents == 'directions':
             input_data, target_data = self.toDirections(data)
+            action_data = target_data
         elif self.contents == '2D-directions':
-            input_data, target_data = self.toDwithDirections(data)
+            input_data, action_data, target_data = self.toDwithDirections(data)
 
-        return input_data, target_data
+        return input_data, action_data, target_data
 
-    def batch_data(self, data, labels, seqlen_idx, batch_size):
+    def batch_data(self, data, labels, seqlen_idx, batch_size, actions=[]):
         """ Return a batch of data. When dataset end is reached, start over.
         """
         shuffle = np.random.permutation(len(data))
 
         data = data[shuffle]
-        labels = labels[shuffle]
+        if len(actions) > 0:
+            actions = actions[shuffle]
+        else:
+            actions = np.zeros(len(shuffle))
+        
+        labels = [labels[i] for i in shuffle]
+
         seqlen_idx = [seqlen_idx[i] for i in shuffle]
+
         seqlen = [self.seqlen['inputs'][i] for i in seqlen_idx]
         y_seqlen = [self.seqlen['targets'][i] for i in seqlen_idx]
+        a_seqlen = [self.seqlen['actions'][i] for i in seqlen_idx]
+
         p_of_split = [self.points_of_split[i] for i in seqlen_idx]
         start = 0
 
         while start + batch_size <= len(data):
-            yield data[start:start+batch_size], labels[start:start+batch_size], seqlen[start:start+batch_size], y_seqlen[start:start+batch_size], p_of_split[start:start+batch_size], shuffle[start:start+batch_size]
+            yield {
+                "inputs": data[start:start+batch_size],
+                "actions": actions[start:start+batch_size],
+                "targets": labels[start:start+batch_size],
+                "seqlen": seqlen[start:start+batch_size],
+                "seqlen_a": a_seqlen[start:start+batch_size],
+                "seqlen_y": y_seqlen[start:start+batch_size],
+                "points_of_split": p_of_split[start:start+batch_size],
+                "shuffle_ids": shuffle[start:start+batch_size]
+                }
             start += batch_size
