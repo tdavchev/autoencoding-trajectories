@@ -42,7 +42,7 @@ def main():
     # Dimension of the embeddings parameter
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding dimension for the spatial coordinates')
-    parser.add_argument('--model_path', type=str, default='./save/single-2d/model',  #'./save/model',
+    parser.add_argument('--model_path', type=str, default='./save/single-2d-input-1d-prediction2/model',  #'./save/model',
                         help='Directory to save model to')
     parser.add_argument('--mode', type=str, default='train',
                         help='train or infer')
@@ -63,12 +63,6 @@ def main():
     start(args)
 
 def start(args):
-
-    if args.content_type == '2D-directions':
-        inpt = 'actions'
-    else:
-        inpt = 'inputs'
-
     if args.network == 'Seq2Seq':
         data = load(args)
         model = Seq2seqModel(
@@ -361,15 +355,15 @@ def trainSeq2Seq(args, model, data):
         num_batches = len(data["x_train"]) // args.batch_size
         for epoch_i in range(args.epochs):
             start_time = time.time()
-            for batch_i, (source_batch, target_batch, batch_seqlen, batch_y_seqlen, pos, shuffle) in \
+            for batch_i, batch_data in \
                     enumerate(data["data_class"].batch_data(data["x_train"], data["y_train"], data["seqlen_idx_train"], args.batch_size)):
                 
-                food = {model.encoder_lengths : batch_seqlen,
-                        model.decoder_lengths : batch_y_seqlen,
-                        model.inputs          : np.swapaxes(source_batch, 0, 1),
+                food = {model.encoder_lengths : batch_data["seqlen"],
+                        model.decoder_lengths : batch_data["seqlen_y"],
+                        model.inputs          : np.swapaxes(batch_data["inputs"], 0, 1),
                         # thesse outputs are decoder inputs.. it can doesn't have to consider the last two as they are extra pad + <EOS>
-                        model.outputs         : np.swapaxes(target_batch[:, :-1], 0, 1), # should not be padded (I think) append <END> to the end.
-                        model.targets         : np.swapaxes(target_batch[:, 1:], 0, 1)}
+                        model.outputs         : np.swapaxes(np.array(batch_data["targets"])[:, :-1], 0, 1), # should not be padded (I think) append <END> to the end.
+                        model.targets         : np.swapaxes(np.array(batch_data["targets"])[:, 1:], 0, 1)}
                 _, batch_loss, summary = sess.run([model.update_step, model.train_loss, model.merged], feed_dict=food)
                 writer.add_summary(summary, batch_i + num_batches * epoch_i)
 
@@ -379,13 +373,13 @@ def trainSeq2Seq(args, model, data):
                 print('Batch: {}'.format(batch_i + num_batches * epoch_i))
                 print('  minibatch_loss: {}'.format(sess.run(model.train_loss, food)))
                 predict_, valid_tar = sess.run([model.dec_predictions, model.valid_targets], food)
-                acc = data["data_class"].calculateAccuracy(np.swapaxes(valid_tar, 0, 1), np.swapaxes(predict_, 0, 1), batch_y_seqlen)
+                acc = data["data_class"].calculateAccuracy(np.swapaxes(valid_tar, 0, 1), np.swapaxes(predict_, 0, 1), batch_data["seqlen_y"])
                 print('  accuracy: {}'.format(acc))
                 for i, (inp, pred) in enumerate(zip(food[model.targets].T, predict_.T)):
                     end_point = food[model.decoder_lengths][i]
-                    split_point = pos[i]
+                    split_point = batch_data["points_of_split"][i]
                     print('   sample: {}'.format(i+1))
-                    print('      sequence real id         :> {}'.format(shuffle[i]))
+                    print('      sequence real id         :> {}'.format(batch_data["shuffle_ids"][i]))
                     print('      target start             :> {}'.format(inp[:5]))
                     print('      predicted start          :> {}'.format(pred[:5]))
                     print('      point of split target    :> {}'.format(inp[split_point-5:split_point+5]))

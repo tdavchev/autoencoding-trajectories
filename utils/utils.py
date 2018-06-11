@@ -146,32 +146,40 @@ class LoadTrajData(object):
         for x, y in data:
             if y[1] == 'right':
                 if y[2] == 'left':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "right", "eos"]))
-                if y[2] == 'up':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up" "right", "eos"]))
-                if y[2] == 'down':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "right", "eos"]))
-            if y[1] == 'left':
-                if y[2] == 'right':
                     temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "left", "eos"]))
                 if y[2] == 'up':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "left", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down" "left", "eos"]))
                 if y[2] == 'down':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "left", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "left", "eos"]))
+                elif y[2] == "eos":
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "eos"]))
+            if y[1] == 'left':
+                if y[2] == 'right':
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "right", "eos"]))
+                if y[2] == 'up':
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "right", "eos"]))
+                if y[2] == 'down':
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "right", "eos"]))
+                elif y[2] == "eos":
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "eos"]))
             if y[1] == 'up':
                 if y[2] == 'right':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "up", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "down", "eos"]))
                 if y[2] == 'left':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left" "up", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right" "down", "eos"]))
                 if y[2] == 'down':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "up", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "down", "eos"]))
+                elif y[2] == "eos":
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "eos"]))
             if y[1] == 'down':
                 if y[2] == 'right':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "down", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "up", "eos"]))
                 if y[2] == 'up':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up" "down", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down" "up", "eos"]))
                 if y[2] == 'left':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "down", "eos"]))
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "up", "eos"]))
+                elif y[2] == "eos":
+                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "eos"]))
 
         for x, y in temp:
             data.append((x, y))
@@ -265,6 +273,96 @@ class LoadTrajData(object):
         return dict(zip(_char2num.values(), _char2num.keys()))
 
     def splitData(self, raw_x, raw_y):
+        data_points = [
+            ([raw_x[    : 250],raw_y[:250]], ["sos", "right", "eos"]), # going right
+            ([raw_x[    : 350],raw_y[:350]], ["sos", "right", "eos"]),
+            ([raw_x[ 182: 250],raw_y[182:250]], ["sos", "right", "eos"]),
+            ([raw_x[ 182: 350],raw_y[182:350]], ["sos", "right", "eos"]),
+            ([raw_x[ 282: 350],raw_y[282:350]], ["sos", "right", "eos"]),
+            ([raw_x[ 320: 400],raw_y[320:400]], ["sos", "right", "eos"]),
+            ([raw_x[1100:1292],raw_y[1100:1292]], ["sos", "right", "eos"]),
+            ([raw_x[2130:2402],raw_y[2130:2402]], ["sos", "right", "eos"]),
+            ([raw_x[2130:2552],raw_y[2130:2552]], ["sos", "right", "eos"]),
+            ([raw_x[2330:2552],raw_y[2330:2552]], ["sos", "right", "eos"]),
+            ([raw_x[3575:3652],raw_y[3575:3652]], ["sos", "right", "eos"]),
+            ([raw_x[3575:3852],raw_y[3575:3852]], ["sos", "right", "eos"]),
+            ([raw_x[3675:3822],raw_y[3675:3822]], ["sos", "right", "eos"]),
+            ([raw_x[4638:4822],raw_y[4638:4822]], ["sos", "right", "eos"]),
+            ([raw_x[4651:4832],raw_y[4651:4832]], ["sos", "right", "eos"]),
+            ([raw_x[4751:4832],raw_y[4751:4832]], ["sos", "right", "eos"]),
+            ([raw_x[4711:4832],raw_y[4711:4832]], ["sos", "right", "eos"]),
+            ([raw_x[5110:5232],raw_y[5110:5232]], ["sos", "right", "eos"]),
+            ([raw_x[5110:5328],raw_y[5110:5328]], ["sos", "right", "eos"]),
+            ([raw_x[5210:5328],raw_y[5210:5328]], ["sos", "right", "eos"]),
+            ([raw_x[5770:5928],raw_y[5770:5928]], ["sos", "right", "eos"]),
+            ([raw_x[ 650: 858],raw_y[650:858]], ["sos", "left", "eos"]), # going left
+            ([raw_x[ 750: 858],raw_y[750:858]], ["sos", "left", "eos"]),
+            ([raw_x[ 700: 838],raw_y[700:838]], ["sos", "left", "eos"]),
+            ([raw_x[1500:1858],raw_y[1500:1858]], ["sos", "left", "eos"]),
+            ([raw_x[1600:1858],raw_y[1600:1858]], ["sos", "left", "eos"]),
+            ([raw_x[1600:1758],raw_y[1600:1758]], ["sos", "left", "eos"]),
+            ([raw_x[1690:1802],raw_y[1690:1802]], ["sos", "left", "eos"]),
+            ([raw_x[1704:1802],raw_y[1704:1802]], ["sos", "left", "eos"]),
+            ([raw_x[2742:2852],raw_y[2742:2852]], ["sos", "left", "eos"]),
+            ([raw_x[6100:6320],raw_y[6100:6320]], ["sos", "left", "eos"]),
+            ([raw_x[2742:3062],raw_y[2742:3062]], ["sos", "left", "eos"]),
+            ([raw_x[2872:3062],raw_y[2872:3062]], ["sos", "left", "eos"]),
+            ([raw_x[4062:4262],raw_y[4062:4262]], ["sos", "left", "eos"]),
+            ([raw_x[4062:4462],raw_y[4062:4462]], ["sos", "left", "eos"]),
+            ([raw_x[4192:4462],raw_y[4192:4462]], ["sos", "left", "eos"]),
+            ([raw_x[5481:5601],raw_y[5481:5601]], ["sos", "left", "eos"]),
+            ([raw_x[4921:5051],raw_y[4921:5051]], ["sos", "left", "eos"]),
+            ([raw_x[6081:6201],raw_y[6081:6201]], ["sos", "left", "eos"]),
+            ([raw_x[6081:6301],raw_y[6081:6301]], ["sos", "left", "eos"]),
+            ([raw_x[6163:6401],raw_y[6163:6401]], ["sos", "left", "eos"]),
+            ([raw_x[6093:6401],raw_y[6093:6401]], ["sos", "left", "eos"]),
+            ([raw_x[ 362: 639],raw_y[362:639]], ["sos", "down", "eos"]), # going down
+            ([raw_x[ 362: 539],raw_y[362:539]], ["sos", "down", "eos"]),
+            ([raw_x[ 462: 539],raw_y[462:539]], ["sos", "down", "eos"]),
+            ([raw_x[ 462: 619],raw_y[462:619]], ["sos", "down", "eos"]),
+            ([raw_x[1295:1490],raw_y[1295:1490]], ["sos", "down", "eos"]),
+            ([raw_x[1345:1490],raw_y[1345:1490]], ["sos", "down", "eos"]),
+            ([raw_x[1305:1410],raw_y[1305:1410]], ["sos", "down", "eos"]),
+            ([raw_x[2537:2742],raw_y[2537:2742]], ["sos", "down", "eos"]),
+            ([raw_x[2557:2712],raw_y[2557:2712]], ["sos", "down", "eos"]),
+            ([raw_x[3852:4062],raw_y[3852:4062]], ["sos", "down", "eos"]),
+            ([raw_x[3992:4062],raw_y[3992:4062]], ["sos", "down", "eos"]),
+            ([raw_x[3892:4002],raw_y[3892:4002]], ["sos", "down", "eos"]),
+            ([raw_x[4822:4904],raw_y[4822:4904]], ["sos", "down", "eos"]),
+            ([raw_x[4822:4904],raw_y[4822:4904]], ["sos", "down", "eos"]),
+            ([raw_x[4823:4898],raw_y[4823:4898]], ["sos", "down", "eos"]),
+            ([raw_x[5301:5404],raw_y[5301:5404]], ["sos", "down", "eos"]),
+            ([raw_x[6520:6750],raw_y[6520:6750]], ["sos", "down", "eos"]),
+            ([raw_x[7030:7350],raw_y[7030:7350]], ["sos", "down", "eos"]),
+            ([raw_x[7130:7350],raw_y[7130:7350]], ["sos", "down", "eos"]),
+            ([raw_x[7050:7250],raw_y[7050:7250]], ["sos", "down", "eos"]),
+            ([raw_x[7034:7150],raw_y[7034:7150]], ["sos", "down", "eos"]),
+            ([raw_x[ 868:1100],raw_y[868:1100]], ["sos", "up", "eos"]), # going up
+            ([raw_x[ 898:1000],raw_y[898:1000]], ["sos", "up", "eos"]),
+            ([raw_x[ 868: 910],raw_y[868:910]], ["sos", "up", "eos"]),
+            ([raw_x[ 918:1100],raw_y[918:1100]], ["sos", "up", "eos"]),
+            ([raw_x[1822:2130],raw_y[1822:2130]], ["sos", "up", "eos"]),
+            ([raw_x[1822:2030],raw_y[1822:2030]], ["sos", "up", "eos"]),
+            ([raw_x[1832:1990],raw_y[1832:1990]], ["sos", "up", "eos"]),
+            ([raw_x[1902:2110],raw_y[1902:2110]], ["sos", "up", "eos"]),
+            ([raw_x[1972:2115],raw_y[1972:2115]], ["sos", "up", "eos"]),
+            ([raw_x[3062:3575],raw_y[3062:3575]], ["sos", "up", "eos"]),
+            ([raw_x[3282:3575],raw_y[3282:3575]], ["sos", "up", "eos"]),
+            ([raw_x[3062:3275],raw_y[3062:3275]], ["sos","up", "eos"]),
+            ([raw_x[3262:3475],raw_y[3262:3475]], ["sos","up", "eos"]),
+            ([raw_x[3182:3475],raw_y[3182:3475]], ["sos","up", "eos"]),
+            ([raw_x[4465:4638],raw_y[4465:4638]], ["sos","up", "eos"]),
+            ([raw_x[4465:4538],raw_y[4465:4538]], ["sos","up", "eos"]),
+            ([raw_x[4535:4638],raw_y[4535:4638]], ["sos","up", "eos"]),
+            ([raw_x[5060:5121],raw_y[5060:5121]], ["sos","up", "eos"]),
+            ([raw_x[5667:5771],raw_y[5667:5771]], ["sos","up", "eos"]),
+            ([raw_x[6750:6900],raw_y[6750:6900]], ["sos","up", "eos"]),
+            ([raw_x[6800:6890],raw_y[6800:6890]], ["sos","up", "eos"])
+        ]
+
+        return np.array(data_points).tolist()
+
+    def splitComplexData(self, raw_x, raw_y):
         complex_data = [
             ([         list(raw_x[:420]) + list(raw_x[420:622]),                       list(raw_y[:420]) + list(raw_y[420:622])],        ["sos","right", "down", "eos"]),
             ([    list(raw_x[4658:4835]) + list(raw_x[4835:4898]),                list(raw_y[4658:4835]) + list(raw_y[4835:4898])],      ["sos","right", "down", "eos"]),
@@ -296,10 +394,10 @@ class LoadTrajData(object):
             ([    list(raw_x[1842:2155]) + list(raw_x[2155:2552]),                list(raw_y[1842:2155]) + list(raw_y[2155:2552])],      ["sos","up", "right", "eos"]),
             ([    list(raw_x[4535:4656]) + list(raw_x[4656:4732]),                list(raw_y[4535:4656]) + list(raw_x[4656:4732])],      ["sos","up", "right", "eos"])
         ]
-        # not sure about the fix/hack revisit!
-        return np.array(complex_data).tolist() # fixes some of the typing differences
 
-    def getSplitPoints(self):
+        return np.array(complex_data).tolist() # fixes some of the typing differences, don't think I need it anymore.
+
+    def getSplitComplexPoints(self):
         dicto = [
             420,        #  0
             4835-4658,  #  1
@@ -366,6 +464,14 @@ class LoadTrajData(object):
         dicto = np.concatenate((dicto, reversed_dicto))
         return dicto
 
+
+    def getSplitPoints(self, data_points, reversed_data_points):
+        dicto = [len(ele)-1 for ele in data_points]
+        reversed_dicto = [len(ele)-1 for ele in data_points]
+
+        dicto = np.concatenate((dicto, reversed_dicto))
+        return dicto
+
     def normalise(self, x, y):
         return [(x-np.mean(x))/np.std(x), (y-np.mean(y))/np.std(y)]
 
@@ -374,8 +480,8 @@ class LoadTrajData(object):
         raw_x, raw_y = raw_data[:, 0], raw_data[:, 1]
         raw_y = np.abs(raw_y - np.max(raw_y)) # flip it
         raw_x, raw_y = self.normalise(raw_x, raw_y)
-        self.points_of_split = self.getSplitPoints()
-        split_data = self.splitData(raw_x, raw_y)
+        self.points_of_split = self.getSplitComplexPoints()
+        split_data = self.splitComplexData(raw_x, raw_y)
         data = self.augment(split_data)
         if self.contents == 'locations':
             input_data, target_data = self.toStringLocations(data)
@@ -394,10 +500,6 @@ class LoadTrajData(object):
         shuffle = np.random.permutation(len(data))
 
         data = data[shuffle]
-        if len(actions) > 0:
-            actions = actions[shuffle]
-        else:
-            actions = np.zeros(len(shuffle))
         
         labels = [labels[i] for i in shuffle]
 
@@ -405,7 +507,14 @@ class LoadTrajData(object):
 
         seqlen = [self.seqlen['inputs'][i] for i in seqlen_idx]
         y_seqlen = [self.seqlen['targets'][i] for i in seqlen_idx]
-        a_seqlen = [self.seqlen['actions'][i] for i in seqlen_idx]
+
+
+        if len(actions) > 0:
+            actions = actions[shuffle]
+            a_seqlen = [self.seqlen['actions'][i] for i in seqlen_idx]
+        else:
+            actions = np.zeros(len(shuffle))
+            a_seqlen = np.zeros(len(seqlen_idx))
 
         p_of_split = [self.points_of_split[i] for i in seqlen_idx]
         start = 0
