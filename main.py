@@ -11,6 +11,7 @@ from utils.utils import LoadTrajData
 from models.model import Seq2seqModel
 from models.model2 import TrajNetwork2D
 from models.model3 import TrajNetwork1D
+from models.model4 import ActionConditionedTrajNetwork1D
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -27,7 +28,7 @@ def main():
     parser.add_argument('--num_layers', type=int, default=1,
                         help='number of layers in the RNN')
     # Size of each batch parameter
-    parser.add_argument('--batch_size', type=int, default=15,
+    parser.add_argument('--batch_size', type=int, default=10,
                         help='minibatch size')
     # Length of sequence to be considered parameter
     # Number of epochs parameter
@@ -42,9 +43,9 @@ def main():
     # Dimension of the embeddings parameter
     parser.add_argument('--embed_size', type=int, default=64,
                         help='Embedding dimension for the spatial coordinates')
-    parser.add_argument('--model_path', type=str, default='./save/single-2d-input-1d-prediction2/model',  #'./save/model',
+    parser.add_argument('--model_path', type=str, default='./save/action_conditioned_2dinp_1dout/model',  #'./save/model',
                         help='Directory to save model to')
-    parser.add_argument('--mode', type=str, default='train',
+    parser.add_argument('--mode', type=str, default='infer',
                         help='train or infer')
     parser.add_argument('--content_type', type=str, default='2D-directions',
                         help='locations, directions or 2D-directions')
@@ -52,8 +53,8 @@ def main():
                         help='Single tag per trajectory sequence or Multiple tags for each step.')
     parser.add_argument('--padas', type=str, default='numeric',
                         help='Type of padding (text or numeric).')
-    parser.add_argument('--network', type=str, default='TrajNetwork1D',
-                        help='Type of network (Seq2Seq, TrajNetwork1D or TrajNetwork2D).')
+    parser.add_argument('--network', type=str, default='ActionConditioned',
+                        help='Type of network (Seq2Seq, TrajNetwork1D, TrajNetwork2D or ActionConditioned).')
     parser.add_argument('--input_type', type=str, default='centered_at_start',
                         help='Type of input (basic (x,y) or centered_at_start).')
     parser.add_argument('--target_type', type=str, default='normalized_time',
@@ -90,6 +91,13 @@ def start(args):
             data["data_class"].max_len['inputs'])
         infer = sample1D
         train = train1D
+    elif args.network == 'ActionConditioned':
+        data = load(args)
+        model = ActionConditionedTrajNetwork1D(
+            data["data_class"].char2Num,
+            data["data_class"].max_len['inputs'])
+        infer = sample1DActionCond
+        train = train1DActionCond
 
     model.buildModel()
 
@@ -143,6 +151,84 @@ def load(args):
         "seqlen_idx_test": seqlen_idx_test
     }
 
+def sample1DActionCond(args, model, data):
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        print('loading variables...')
+        saver.restore(sess, args.model_path)
+
+        test_data = \
+            next(data["data_class"].batch_data(data["x_test"], data["y_test"], data["seqlen_idx_test"], args.batch_size))
+        
+        i = 0
+        print(np.array(test_data["actions"]).shape)
+        for act in np.swapaxes(np.reshape(test_data["actions"], (args.batch_size, 1)), 0, 1):
+            if i < 1:
+                i += 1
+                food = {model.input_lengths   : test_data["seqlen"],
+                        model.inputs          : test_data["inputs"],
+                        model.action_lengths  : test_data["seqlen_a"],
+                        model.actions         : np.reshape(act, (args.batch_size, 1)),}
+            
+        o_mux, o_sx = sess.run([model.mux, model.sx], feed_dict=food)
+        print("actions", test_data["actions"][0])
+
+        ans = []
+        br = 0
+        for br, ele in enumerate(test_data["shuffle_ids"]):
+            if ele == 0:
+                idx = br
+        
+        for i in range(1000):
+            ans.append(sample_gaussian_1d(o_mux[idx][0], o_sx[idx][0], 1))
+
+        print(test_data["shuffle_ids"])
+
+        sns.set(color_codes=True)
+        sns.distplot(ans, label='prediction')
+        sns.rugplot([test_data["targets"][idx]], color='indianred', label='target')
+        plt.title("entry id: "+ str(test_data["shuffle_ids"][idx]))
+        plt.ylabel('mass')
+        plt.xlabel('time')
+        plt.xlim((0, 1))
+        plt.legend()
+
+        plt.show()
+
+
+def train1DActionCond(args, model, data):
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+    # with tf.Session(config=session_config) as sess:
+        sess.run(tf.global_variables_initializer())
+        writer = tf.summary.FileWriter('./logdir/train_'+strftime("%d_%b_%Y_%H_%M_%S", gmtime()))  # create writer
+        writer.add_graph(sess.graph)
+        print("Starting to learn...")
+        print("----------------------------------------------------------------------")
+        num_batches = len(data["x_train"]) // args.batch_size
+        for epoch_i in range(args.epochs):
+            start_time = time.time()
+            for batch_i, batch_data in \
+                    enumerate(data["data_class"].batch_data(data["x_train"], data["y_train"], data["seqlen_idx_train"], args.batch_size, data["act_train"])):
+                i = 0
+                for act in np.swapaxes(batch_data["actions"], 0, 1):
+                    if i < 1:
+                        food = {model.input_lengths   : batch_data["seqlen"],
+                                model.inputs          : batch_data["inputs"],
+                                model.action_lengths  : batch_data["seqlen_a"],
+                                model.actions         : np.reshape(act, (args.batch_size, 1)),
+                                model.targets         : np.array(batch_data["targets"]).reshape((len(batch_data["targets"]), 1))}
+                        _, batch_loss, summary = sess.run([model.update_step, model.train_loss, model.merged], feed_dict=food)
+                        writer.add_summary(summary, batch_i + num_batches * epoch_i)    
+                        i+= 1
+            print('Epoch: {:3} Loss: {:>6.3f} Epoch duration: {:>6.3f}s'.format(epoch_i, batch_loss, time.time() - start_time))
+            print("----------------------------------------------------------------------")
+            print()
+        writer.close()
+        saver.save(sess, args.model_path)
+        print("model saved to {}".format(args.model_path))
+        print("Run 'tensorboard --logdir=./logdir' to checkout tensorboard logs.")
+
 def sample_gaussian_1d(mean, cov, samples):
     '''
     Function to sample a point from a given 2D normal distribution
@@ -171,16 +257,20 @@ def sample1D(args, model, data):
         o_mux, o_sx = sess.run([model.mux, model.sx], feed_dict=food)
         print("actions", test_data["actions"][0])
 
+        for br, ele in enumerate(test_data["shuffle_ids"]):
+            if ele == 0:
+                idx = br
+        
         ans = []
         for i in range(1000):
-            ans.append(sample_gaussian_1d(o_mux[0][0], o_sx[0][0], 1))
+            ans.append(sample_gaussian_1d(o_mux[idx][0], o_sx[idx][0], 1))
 
         print(test_data["shuffle_ids"])
 
         sns.set(color_codes=True)
         sns.distplot(ans, label='prediction')
-        sns.rugplot([test_data["targets"][0]], color='indianred', label='target')
-        plt.title("entry id: "+ str(test_data["shuffle_ids"][0]))
+        sns.rugplot([test_data["targets"][idx]], color='indianred', label='target')
+        plt.title("entry id: "+ str(test_data["shuffle_ids"][idx]))
         plt.ylabel('mass')
         plt.xlabel('time')
         plt.xlim((0, 1))
