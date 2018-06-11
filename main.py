@@ -213,7 +213,7 @@ def train1D(args, model, data):
                     if i < 1:
                         food = {model.input_lengths   : batch_data["seqlen"],
                                 model.inputs          : batch_data["inputs"],
-                                model.targets         : np.array(batch_data["targets"]).reshape((10, 1))}
+                                model.targets         : np.array(batch_data["targets"]).reshape((len(batch_data["targets"]), 1))}
                         _, batch_loss, summary = sess.run([model.update_step, model.train_loss, model.merged], feed_dict=food)
                         writer.add_summary(summary, batch_i + num_batches * epoch_i)    
                         i+= 1
