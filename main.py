@@ -54,12 +54,15 @@ def main():
                         help='Type of padding (text or numeric).')
     parser.add_argument('--network', type=str, default='TrajNetwork1D',
                         help='Type of network (Seq2Seq, TrajNetwork1D or TrajNetwork2D).')
+    parser.add_argument('--input_type', type=str, default='centered_at_start',
+                        help='Type of input (basic (x,y) or centered_at_start).')
+    parser.add_argument('--target_type', type=str, default='normalized_time',
+                        help='Type of target (basic (x,y) or normalized_time).')
     args = parser.parse_args()
 
     start(args)
 
 def start(args):
-    data = load(args)
 
     if args.content_type == '2D-directions':
         inpt = 'actions'
@@ -67,6 +70,7 @@ def start(args):
         inpt = 'inputs'
 
     if args.network == 'Seq2Seq':
+        data = load(args)
         model = Seq2seqModel(
             data["data_class"].char2Num,
             args.mode,
@@ -78,12 +82,15 @@ def start(args):
         infer = inferSeq2Seq
         train = trainSeq2Seq
     elif args.network == 'TrajNetwork2D':
+        # target_type='basic' # it should output 2D Gaussians
+        data = load(args)
         model = TrajNetwork2D(
             data["data_class"].char2Num,
             data["data_class"].max_len['inputs'])
         infer = sample2D
         train = train2D
     elif args.network == 'TrajNetwork1D':
+        data = load(args)
         model = TrajNetwork1D(
             data["data_class"].char2Num,
             data["data_class"].max_len['inputs'])
@@ -99,8 +106,16 @@ def start(args):
 
 def load(args):
     # load data
-    data = LoadTrajData(contents=args.content_type, tag=args.tag_type)
-    x_train, x_test, y_train, y_test = train_test_split(data.input_data, data.target_data, test_size=0.2, random_state=42)
+    data = LoadTrajData(
+        input_type=args.input_type,
+        target_type=args.target_type,
+        contents=args.content_type,
+        tag=args.tag_type)
+    x_train, x_test, y_train, y_test = train_test_split(
+        data.input_data,
+        data.target_data,
+        test_size=0.2,
+        random_state=42)
 
     # Due to shuffle the sequences are not as they are stored in data.seqlen
     # we need the data.seqlen ids for all items in train and test.
