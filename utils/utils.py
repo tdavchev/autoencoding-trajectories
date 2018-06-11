@@ -3,12 +3,14 @@ import numpy as np
 from random import shuffle
 
 class LoadTrajData(object):
-    def __init__(self, contents='directions', tag='single', file_path='./data/timeseries_25_May_2018_18_51_49-walk3.npy'):
+    def __init__(self, contents='2D-directions', tag='single', input_type='centered_at_start', target_type='normalized_time', file_path='./data/timeseries_25_May_2018_18_51_49-walk3.npy'):
         self.char2Num = {}
         self.seqlen = {'inputs':[], 'targets':[], 'actions':[]}
         self.max_len = {'inputs':0, 'targets':0, 'actions':0}
         self.contents = contents
         self.tag = tag
+        self.input_type = input_type
+        self.target_type = target_type
         self.input_data, self.action_data, self.target_data = self.loadData(file_path)
     
     def toStringLocations(self, data):
@@ -51,8 +53,11 @@ class LoadTrajData(object):
             target_data.append(0.0)
             if self.tag == 'every': # use labels for every timestep
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                    # input_data[br] += str(x)+","+str(y) + " "
-                    input_data[br].append([x, y])
+                    if self.input_type == 'basic':
+                        input_data[br].append([x, y])
+                    elif self.input_type == 'centered_at_start':
+                        input_data[br].append([x - entry[0][0], y - entry[1][0]])
+
                     if count <= self.points_of_split[br]:
                         actions_data[br] += label[1] + " "
                     else:
@@ -62,18 +67,30 @@ class LoadTrajData(object):
 
             elif self.tag == 'single':
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
-                    input_data[br].append([x - entry[0][0], y - entry[1][0]])
+                    if self.input_type == 'basic':
+                        input_data[br].append([x, y])
+                    elif self.input_type == 'centered_at_start':
+                        input_data[br].append([x - entry[0][0], y - entry[1][0]])
 
                 actions_data[br] = label[1] + " " + label[2]
 
-            target_data[br] = self.points_of_split[br]/len(input_data[br])
+            if self.target_type == 'normalized_time':
+                target_data[br] = self.points_of_split[br]/len(input_data[br])
+                self.max_len['targets'] = 1
+                self.seqlen['targets'].append(1)
+            elif self.target_type == 'basic':
+                if self.input_type == 'basic':
+                    target_data[br].append([entry[0][self.points_of_split[br]], entry[1][self.points_of_split[br]]])
+                elif self.input_type == 'centered_at_start':
+                    target_data[br].append([entry[0][self.points_of_split[br]] - entry[0][0], entry[1][self.points_of_split[br]] - entry[1][0]])
+                    target_data[br].append([entry[0][self.points_of_split[br]] - entry[0][0], entry[1][self.points_of_split[br]] - entry[1][0]])
 
-            # target_data[br].append([entry[0][self.points_of_split[br]] - entry[0][0], entry[1][self.points_of_split[br]] - entry[1][0]])
-            # target_data[br].append([entry[0][self.points_of_split[br]] - entry[0][0], entry[1][self.points_of_split[br]] - entry[1][0]])
+                if self.max_len['targets'] <= len(target_data[br]):
+                    self.max_len['targets'] = len(target_data[br])
+
+                self.seqlen['targets'].append(len(target_data[br]))
 
             self.seqlen['inputs'].append(len(input_data[br]))
-            # self.seqlen['targets'].append(len(target_data[br]))
-            self.seqlen['targets'].append(1)
             # the +1 accounts for the <GO> symbol
             self.seqlen['actions'].append(len(actions_data[br].split()) + 1)
 
@@ -82,10 +99,6 @@ class LoadTrajData(object):
 
             if self.max_len['actions'] <= len(actions_data[br].split()):
                 self.max_len['actions'] = len(actions_data[br].split())
-
-            # if self.max_len['targets'] <= len(target_data[br]):
-            #     self.max_len['targets'] = len(target_data[br])
-            self.max_len['targets'] = 1
 
             br += 1
 
