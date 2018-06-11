@@ -480,8 +480,10 @@ class LoadTrajData(object):
         raw_x, raw_y = raw_data[:, 0], raw_data[:, 1]
         raw_y = np.abs(raw_y - np.max(raw_y)) # flip it
         raw_x, raw_y = self.normalise(raw_x, raw_y)
+        # self.basic_points_of_split = self.getSplitPoints()
         self.points_of_split = self.getSplitComplexPoints()
         split_data = self.splitComplexData(raw_x, raw_y)
+        # basic_split_data = self.splitData(raw_x, raw_y)
         data = self.augment(split_data)
         if self.contents == 'locations':
             input_data, target_data = self.toStringLocations(data)
