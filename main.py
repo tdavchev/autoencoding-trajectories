@@ -121,6 +121,8 @@ def load(args):
 
     # Due to shuffle the sequences are not as they are stored in data.seqlen
     # we need the data.seqlen ids for all items in train and test.
+    # perhaps discard the always starting from origin thing
+    # at the moment padding data to 0 is an issue since starting at origin is 0...
     seqlen_idx_train = [[idx for idx, val in enumerate(data.input_data) if val==train_val] for train_val in x_train] # (38, 1)
     seqlen_idx_train = np.reshape(seqlen_idx_train, (len(seqlen_idx_train),)) # (38, )
     seqlen_idx_test =  [[idx for idx, val in enumerate(data.input_data) if val==test_val] for test_val in x_test] # (20, 1)
