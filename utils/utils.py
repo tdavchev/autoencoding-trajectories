@@ -3,7 +3,7 @@ import numpy as np
 from random import shuffle
 
 class LoadTrajData(object):
-    def __init__(self, contents='2D-directions', tag='single', input_type='centered_at_start', target_type='normalized_time', file_path='./data/timeseries_25_May_2018_18_51_49-walk3.npy'):
+    def __init__(self, contents='2D-directions', tag='single', input_type='centered_at_start', target_type='normalized_time', file_path='./data/data.txt', file_complex_path='./data/one_turn_data.txt', raw_file_path='./data/timeseries_25_May_2018_18_51_49-walk3.npy'):
         self.char2Num = {}
         self.seqlen = {'inputs':[], 'targets':[], 'actions':[]}
         self.max_len = {'inputs':0, 'targets':0, 'actions':0}
@@ -11,13 +11,16 @@ class LoadTrajData(object):
         self.tag = tag
         self.input_type = input_type
         self.target_type = target_type
-        self.input_data, self.action_data, self.target_data = self.loadData(file_path)
+        self.loadRawData(raw_file_path)
+        self.data_dictionary = {"indexes":[], "alphas":[], "targets":[]}
+        data = self.preprocess(file_path=file_path, file_complex_path=file_complex_path)
+        self.input_data, self.action_data, self.target_data = self.assignData(data)
     
     def toStringLocations(self, data):
         input_data = []
         target_data = []
         br = 0
-        for entry in np.array(data)[:, 0]:
+        for entry in np.array(data):
             input_data.append("")
             target_data.append("")
             for count, (x, y) in enumerate(zip(entry[0], entry[1])):
@@ -42,12 +45,21 @@ class LoadTrajData(object):
 
         return input_data, target_data
 
+    def directions(self, br):
+        string_data = ""
+        for i in range(len(self.data_dictionary["targets"][br])):
+            string_data += self.data_dictionary["targets"][br][i]
+            if i < len(self.data_dictionary["targets"][br])-1:
+                string_data += " "
+
+        return string_data
+
     def toDwithDirections(self, data):
         input_data = []
         target_data = []
         actions_data = []
         br = 0
-        for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
+        for entry, label in zip(data, self.data_dictionary["targets"]):
             input_data.append([])
             actions_data.append("")
             target_data.append(0.0)
@@ -58,12 +70,14 @@ class LoadTrajData(object):
                     elif self.input_type == 'centered_at_start':
                         input_data[br].append([x - entry[0][0], y - entry[1][0]])
 
-                    if count <= self.points_of_split[br]:
-                        actions_data[br] += label[1] + " "
-                    else:
-                        actions_data[br] += label[2] + " "                        
-
-                actions_data[br] = actions_data[br][:-1] # account for empty space in the end..
+                    addLabel = False
+                    for i, pos in enumerate(self.points_of_split[br]):
+                        if count <= pos and not addLabel:
+                            addLabel = True
+                            actions_data[br] += label[i] + " "
+                        if i == len(self.points_of_split[br])-1 and not addLabel:
+                            addLabel = True
+                            actions_data[br] += label[i+1]
 
             elif self.tag == 'single':
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
@@ -72,7 +86,7 @@ class LoadTrajData(object):
                     elif self.input_type == 'centered_at_start':
                         input_data[br].append([x - entry[0][0], y - entry[1][0]])
 
-                actions_data[br] = label[1] + " " + label[2]
+                actions_data[br] = self.directions(br)
 
             if self.target_type == 'normalized_time':
                 target_data[br] = self.points_of_split[br]/len(input_data[br])
@@ -108,24 +122,28 @@ class LoadTrajData(object):
         input_data = []
         target_data = []
         br = 0
-        for entry, label in zip(np.array(data)[:, 0], np.array(data)[:, 1]):
+        for entry, label in zip(np.array(data), self.data_dictionary["targets"]):
             input_data.append("")
             target_data.append("")
             if self.tag == 'every': # use labels for every timestep
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
                     # input_data[br] += str(x)+","+str(y) + " "
                     input_data[br] += str(x) + str(y) + " "
-                    if count <= self.points_of_split[br]:
-                        target_data[br] += label[1] + " "
-                    else:
-                        target_data[br] += label[2] + " "
-                    
+                    addLabel = False
+                    for i, pos in enumerate(self.points_of_split[br]):
+                        if count <= pos and not addLabel:
+                            addLabel = True
+                            target_data[br] += label[i] + " "
+                        if i == len(self.points_of_split[br])-1 and not addLabel:
+                            addLabel = True
+                            target_data[br] += label[i+1]
+
                 target_data[br] = target_data[br][:-1] # account for empty space in the end..
             elif self.tag == 'single':
                 for count, (x, y) in enumerate(zip(entry[0], entry[1])):
                     input_data[br] += str(x) + str(y) + " "
 
-                target_data[br] = label[1] + " " + label[2]
+                target_data[br] = self.directions(br)
 
             self.seqlen['inputs'].append(len(input_data[br]))
             # the +1 accounts for the <GO> symbol
@@ -141,50 +159,60 @@ class LoadTrajData(object):
 
         return input_data, target_data
 
+    def update(self, indexes, targets,  alphas=[0,0]):
+        self.data_dictionary["indexes"].append(indexes)
+        self.data_dictionary["alphas"].append(alphas)
+        self.data_dictionary["targets"].append(targets)
+
     def augment(self, data):
-        temp = []
-        for x, y in data:
-            if y[1] == 'right':
-                if y[2] == 'left':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "left", "eos"]))
-                if y[2] == 'up':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down" "left", "eos"]))
-                if y[2] == 'down':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "left", "eos"]))
-                elif y[2] == "eos":
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "eos"]))
-            if y[1] == 'left':
-                if y[2] == 'right':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "right", "eos"]))
-                if y[2] == 'up':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "right", "eos"]))
-                if y[2] == 'down':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "right", "eos"]))
-                elif y[2] == "eos":
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "eos"]))
-            if y[1] == 'up':
-                if y[2] == 'right':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "down", "eos"]))
-                if y[2] == 'left':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right" "down", "eos"]))
-                if y[2] == 'down':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "down", "eos"]))
-                elif y[2] == "eos":
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down", "eos"]))
-            if y[1] == 'down':
-                if y[2] == 'right':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "left", "up", "eos"]))
-                if y[2] == 'up':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "down" "up", "eos"]))
-                if y[2] == 'left':
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "right", "up", "eos"]))
-                elif y[2] == "eos":
-                    temp.append(([x[0][::-1], x[1][::-1]], ["sos", "up", "eos"]))
+        reversed_data = []
+        for br, (values, x) in enumerate(zip(data, np.squeeze(self.data_dictionary["indexes"]))):
+            reversed_data.append([values[0][::-1], values[1][::-1]])
+            if self.data_dictionary["targets"][br][0] == 'right':
+                if len(self.data_dictionary["targets"][br]) > 1:
+                    if self.data_dictionary["targets"][br][1] == 'left':
+                        self.update([x[0], x[1]], ["right", "left"])
+                    if self.data_dictionary["targets"][br][1] == 'up':
+                        self.update([x[0], x[1]], ["down", "left"])
+                    if self.data_dictionary["targets"][br][1] == 'down':
+                        self.update([x[0], x[1]], ["up", "left"])
+                else:
+                    self.update([x[0], x[1]], ["left"])
 
-        for x, y in temp:
-            data.append((x, y))
+            if self.data_dictionary["targets"][br][0] == 'left':
+                if len(self.data_dictionary["targets"][br]) > 1:
+                    if self.data_dictionary["targets"][br][1] == 'right':
+                        self.update([x[0], x[1]] ["left", "right"])
+                    if self.data_dictionary["targets"][br][1] == 'up':
+                        self.update([x[0], x[1]], ["down", "right"])
+                    if self.data_dictionary["targets"][br][1] == 'down':
+                        self.update([x[0], x[1]], ["up", "right"])
+                else:
+                        self.update([x[0], x[1]], ["right"])
 
-        return data
+            if self.data_dictionary["targets"][br][0] == 'up':
+                if len(self.data_dictionary["targets"][br]) > 1:
+                    if self.data_dictionary["targets"][br][1] == 'right':
+                        self.update([x[0], x[1]], ["left", "down"])
+                    if self.data_dictionary["targets"][br][1] == 'left':
+                        self.update([x[0], x[1]], ["right", "down"])
+                    if self.data_dictionary["targets"][br][1] == 'down':
+                        self.update([x[0], x[1]], ["up", "down"])
+                else:
+                        self.update([x[0], x[1]], ["down"])
+
+            if self.data_dictionary["targets"][br][0] == 'down':
+                if len(self.data_dictionary["targets"][br]) > 1:
+                    if self.data_dictionary["targets"][br][1] == 'right':
+                        self.update([x[0], x[1]], ["left", "up"])
+                    if self.data_dictionary["targets"][br][1] == 'up':
+                        self.update([x[0], x[1]], ["down", "up"])
+                    if self.data_dictionary["targets"][br][1] == 'left':
+                        self.update([x[0], x[1]], ["right", "up"])
+                else:
+                        self.update([x[0], x[1]], ["up"])
+
+        return np.concatenate((data, reversed_data))
 
     def calculateAccuracy(self, tar_v, pred_v, batch_y_seqlen, acc=[]):
         for idx, (val, pred_val) in enumerate(zip(tar_v, pred_v)):
@@ -249,7 +277,7 @@ class LoadTrajData(object):
     def embedAsAsPoint(self, data_points, contents, idxes=[], dataType='inputs', test=False, pad=True):
         pt = [list(point) + [[0,0]]*(self.max_len[dataType] - len(point)) for point in data_points]
         if contents == '2D-directions':
-            acts = [self.action_data[i] for i in idxes]
+            acts = [self.action_data[i] for i in idxes] # data is shuffled after split
             a_pt = self.embedAsString(acts, contents, 'actions', test, pad)
         return [np.array(pt), np.array(a_pt)]
 
@@ -272,133 +300,42 @@ class LoadTrajData(object):
     def numToChar(self, _char2num):
         return dict(zip(_char2num.values(), _char2num.keys()))
 
-    def splitData(self, raw_x, raw_y):
-        data_points = [
-            ([raw_x[    : 250],raw_y[:250]], ["sos", "right", "eos"]), # going right
-            ([raw_x[    : 350],raw_y[:350]], ["sos", "right", "eos"]),
-            ([raw_x[ 182: 250],raw_y[182:250]], ["sos", "right", "eos"]),
-            ([raw_x[ 182: 350],raw_y[182:350]], ["sos", "right", "eos"]),
-            ([raw_x[ 282: 350],raw_y[282:350]], ["sos", "right", "eos"]),
-            ([raw_x[ 320: 400],raw_y[320:400]], ["sos", "right", "eos"]),
-            ([raw_x[1100:1292],raw_y[1100:1292]], ["sos", "right", "eos"]),
-            ([raw_x[2130:2402],raw_y[2130:2402]], ["sos", "right", "eos"]),
-            ([raw_x[2130:2552],raw_y[2130:2552]], ["sos", "right", "eos"]),
-            ([raw_x[2330:2552],raw_y[2330:2552]], ["sos", "right", "eos"]),
-            ([raw_x[3575:3652],raw_y[3575:3652]], ["sos", "right", "eos"]),
-            ([raw_x[3575:3852],raw_y[3575:3852]], ["sos", "right", "eos"]),
-            ([raw_x[3675:3822],raw_y[3675:3822]], ["sos", "right", "eos"]),
-            ([raw_x[4638:4822],raw_y[4638:4822]], ["sos", "right", "eos"]),
-            ([raw_x[4651:4832],raw_y[4651:4832]], ["sos", "right", "eos"]),
-            ([raw_x[4751:4832],raw_y[4751:4832]], ["sos", "right", "eos"]),
-            ([raw_x[4711:4832],raw_y[4711:4832]], ["sos", "right", "eos"]),
-            ([raw_x[5110:5232],raw_y[5110:5232]], ["sos", "right", "eos"]),
-            ([raw_x[5110:5328],raw_y[5110:5328]], ["sos", "right", "eos"]),
-            ([raw_x[5210:5328],raw_y[5210:5328]], ["sos", "right", "eos"]),
-            ([raw_x[5770:5928],raw_y[5770:5928]], ["sos", "right", "eos"]),
-            ([raw_x[ 650: 858],raw_y[650:858]], ["sos", "left", "eos"]), # going left
-            ([raw_x[ 750: 858],raw_y[750:858]], ["sos", "left", "eos"]),
-            ([raw_x[ 700: 838],raw_y[700:838]], ["sos", "left", "eos"]),
-            ([raw_x[1500:1858],raw_y[1500:1858]], ["sos", "left", "eos"]),
-            ([raw_x[1600:1858],raw_y[1600:1858]], ["sos", "left", "eos"]),
-            ([raw_x[1600:1758],raw_y[1600:1758]], ["sos", "left", "eos"]),
-            ([raw_x[1690:1802],raw_y[1690:1802]], ["sos", "left", "eos"]),
-            ([raw_x[1704:1802],raw_y[1704:1802]], ["sos", "left", "eos"]),
-            ([raw_x[2742:2852],raw_y[2742:2852]], ["sos", "left", "eos"]),
-            ([raw_x[6100:6320],raw_y[6100:6320]], ["sos", "left", "eos"]),
-            ([raw_x[2742:3062],raw_y[2742:3062]], ["sos", "left", "eos"]),
-            ([raw_x[2872:3062],raw_y[2872:3062]], ["sos", "left", "eos"]),
-            ([raw_x[4062:4262],raw_y[4062:4262]], ["sos", "left", "eos"]),
-            ([raw_x[4062:4462],raw_y[4062:4462]], ["sos", "left", "eos"]),
-            ([raw_x[4192:4462],raw_y[4192:4462]], ["sos", "left", "eos"]),
-            ([raw_x[5481:5601],raw_y[5481:5601]], ["sos", "left", "eos"]),
-            ([raw_x[4921:5051],raw_y[4921:5051]], ["sos", "left", "eos"]),
-            ([raw_x[6081:6201],raw_y[6081:6201]], ["sos", "left", "eos"]),
-            ([raw_x[6081:6301],raw_y[6081:6301]], ["sos", "left", "eos"]),
-            ([raw_x[6163:6401],raw_y[6163:6401]], ["sos", "left", "eos"]),
-            ([raw_x[6093:6401],raw_y[6093:6401]], ["sos", "left", "eos"]),
-            ([raw_x[ 362: 639],raw_y[362:639]], ["sos", "down", "eos"]), # going down
-            ([raw_x[ 362: 539],raw_y[362:539]], ["sos", "down", "eos"]),
-            ([raw_x[ 462: 539],raw_y[462:539]], ["sos", "down", "eos"]),
-            ([raw_x[ 462: 619],raw_y[462:619]], ["sos", "down", "eos"]),
-            ([raw_x[1295:1490],raw_y[1295:1490]], ["sos", "down", "eos"]),
-            ([raw_x[1345:1490],raw_y[1345:1490]], ["sos", "down", "eos"]),
-            ([raw_x[1305:1410],raw_y[1305:1410]], ["sos", "down", "eos"]),
-            ([raw_x[2537:2742],raw_y[2537:2742]], ["sos", "down", "eos"]),
-            ([raw_x[2557:2712],raw_y[2557:2712]], ["sos", "down", "eos"]),
-            ([raw_x[3852:4062],raw_y[3852:4062]], ["sos", "down", "eos"]),
-            ([raw_x[3992:4062],raw_y[3992:4062]], ["sos", "down", "eos"]),
-            ([raw_x[3892:4002],raw_y[3892:4002]], ["sos", "down", "eos"]),
-            ([raw_x[4822:4904],raw_y[4822:4904]], ["sos", "down", "eos"]),
-            ([raw_x[4822:4904],raw_y[4822:4904]], ["sos", "down", "eos"]),
-            ([raw_x[4823:4898],raw_y[4823:4898]], ["sos", "down", "eos"]),
-            ([raw_x[5301:5404],raw_y[5301:5404]], ["sos", "down", "eos"]),
-            ([raw_x[6520:6750],raw_y[6520:6750]], ["sos", "down", "eos"]),
-            ([raw_x[7030:7350],raw_y[7030:7350]], ["sos", "down", "eos"]),
-            ([raw_x[7130:7350],raw_y[7130:7350]], ["sos", "down", "eos"]),
-            ([raw_x[7050:7250],raw_y[7050:7250]], ["sos", "down", "eos"]),
-            ([raw_x[7034:7150],raw_y[7034:7150]], ["sos", "down", "eos"]),
-            ([raw_x[ 868:1100],raw_y[868:1100]], ["sos", "up", "eos"]), # going up
-            ([raw_x[ 898:1000],raw_y[898:1000]], ["sos", "up", "eos"]),
-            ([raw_x[ 868: 910],raw_y[868:910]], ["sos", "up", "eos"]),
-            ([raw_x[ 918:1100],raw_y[918:1100]], ["sos", "up", "eos"]),
-            ([raw_x[1822:2130],raw_y[1822:2130]], ["sos", "up", "eos"]),
-            ([raw_x[1822:2030],raw_y[1822:2030]], ["sos", "up", "eos"]),
-            ([raw_x[1832:1990],raw_y[1832:1990]], ["sos", "up", "eos"]),
-            ([raw_x[1902:2110],raw_y[1902:2110]], ["sos", "up", "eos"]),
-            ([raw_x[1972:2115],raw_y[1972:2115]], ["sos", "up", "eos"]),
-            ([raw_x[3062:3575],raw_y[3062:3575]], ["sos", "up", "eos"]),
-            ([raw_x[3282:3575],raw_y[3282:3575]], ["sos", "up", "eos"]),
-            ([raw_x[3062:3275],raw_y[3062:3275]], ["sos","up", "eos"]),
-            ([raw_x[3262:3475],raw_y[3262:3475]], ["sos","up", "eos"]),
-            ([raw_x[3182:3475],raw_y[3182:3475]], ["sos","up", "eos"]),
-            ([raw_x[4465:4638],raw_y[4465:4638]], ["sos","up", "eos"]),
-            ([raw_x[4465:4538],raw_y[4465:4538]], ["sos","up", "eos"]),
-            ([raw_x[4535:4638],raw_y[4535:4638]], ["sos","up", "eos"]),
-            ([raw_x[5060:5121],raw_y[5060:5121]], ["sos","up", "eos"]),
-            ([raw_x[5667:5771],raw_y[5667:5771]], ["sos","up", "eos"]),
-            ([raw_x[6750:6900],raw_y[6750:6900]], ["sos","up", "eos"]),
-            ([raw_x[6800:6890],raw_y[6800:6890]], ["sos","up", "eos"])
-        ]
+    def loadData(self, data_path):
+        br = len(self.data_dictionary["indexes"])
+        # data = {"indexes":[], "alphas":[], "directions":[]}
+        with open(data_path, 'r') as content:
+            for entry in content.readlines():
+                self.data_dictionary["indexes"].append([])
+                self.data_dictionary["alphas"].append([])
+                self.data_dictionary["targets"].append([])
+                _input = entry.split("\n")[0]
+                _input = [item.strip() for item in _input.split(",")]
+                self.data_dictionary["indexes"][br].append([int(_input[0]), int(_input[1])])  
+                self.data_dictionary["alphas"][br].append([float(_input[2]), float(_input[3])])
+                for i in range(4,len(_input)):
+                    self.data_dictionary["targets"][br].append(_input[i][1:-1])
+                br += 1
 
-        return np.array(data_points).tolist()
+    def splitData(self, data, data_indexes, alphas):
+        for i, idxs in enumerate(data_indexes):
+            data.append(
+                [
+                    self.raw_x[idxs[0]:idxs[1]] + alphas[i][0],
+                    self.raw_y[idxs[0]:idxs[1]] + alphas[i][1]
+                ]
+            )
 
-    def splitComplexData(self, raw_x, raw_y):
-        complex_data = [
-            ([         list(raw_x[:420]) + list(raw_x[420:622]),                       list(raw_y[:420]) + list(raw_y[420:622])],        ["sos","right", "down", "eos"]),
-            ([    list(raw_x[4658:4835]) + list(raw_x[4835:4898]),                list(raw_y[4658:4835]) + list(raw_y[4835:4898])],      ["sos","right", "down", "eos"]),
-            ([    list(raw_x[5150:5326]) + list(raw_x[5326:5404]),                list(raw_y[5150:5326]) + list(raw_y[5326:5404])],      ["sos","right", "down", "eos"]),
-            ([    list(raw_x[:420]-0.03) + list(raw_x[420:542]-0.03),              list(raw_y[:420]-0.2) + list(raw_y[420:542]-0.2)],    ["sos","right", "down", "eos"]),
-            ([      list(raw_x[270:420]) + list(raw_x[420:522]),                    list(raw_y[270:420]) + list(raw_y[420:522])],        ["sos","right", "down", "eos"]),
-            ([    list(raw_x[2330:2563]) + list(raw_x[2563:2742]),                list(raw_y[2330:2563]) + list(raw_y[2563:2742])],      ["sos","right", "down", "eos"]),
-            ([    list(raw_x[2430:2563]) + list(raw_x[2563:2622]),                list(raw_y[2430:2563]) + list(raw_y[2563:2622])],      ["sos","right", "down", "eos"]),
-            ([    list(raw_x[3575:3842]) + list(raw_x[3842:4062]),                list(raw_y[3575:3842]) + list(raw_y[3842:4062])],      ["sos","right", "down", "eos"]),
-            ([    list(raw_x[3675:3842]) + list(raw_x[3842:3950]),                list(raw_y[3675:3842]) + list(raw_y[3842:3950])],      ["sos","right", "down", "eos"]),
-            ([      list(raw_x[362:636]) + list(raw_x[636:858]),                    list(raw_y[362:636]) + list(raw_y[636:858])],        ["sos","down", "left", "eos"]),
-            ([      list(raw_x[462:636]) + list(raw_x[636:758]),                    list(raw_y[462:636]) + list(raw_y[636:758])],        ["sos","down", "left", "eos"]),
-            ([    list(raw_x[1295:1490]) + list(raw_x[1490:1858]),                list(raw_y[1295:1490]) + list(raw_y[1490:1858])],      ["sos","down", "left", "eos"]),
-            ([    list(raw_x[1345:1490]) + list(raw_x[1490:1658]),                list(raw_y[1345:1490]) + list(raw_y[1490:1658])],      ["sos","down", "left", "eos"]),
-            ([list(raw_x[1345:1490]-0.3) + list(raw_x[1490:1658]-0.3),            list(raw_y[1345:1490]) + list(raw_y[1490:1658])],      ["sos","down", "left", "eos"]),
-            ([list(raw_x[1345:1490]-0.3) + list(raw_x[1490:1658]-0.3),       list(raw_y[1345:1490]+0.25) + list(raw_y[1490:1658]+0.25)], ["sos","down", "left", "eos"]),
-            ([    list(raw_x[2537:2741]) + list(raw_x[2741:3050]),                list(raw_y[2537:2741]) + list(raw_y[2741:3050])],      ["sos","down", "left", "eos"]),
-            ([    list(raw_x[2617:2741]) + list(raw_x[2741:3050]),                list(raw_y[2617:2741]) + list(raw_y[2741:3050])],      ["sos","down", "left", "eos"]),
-            ([    list(raw_x[2617:2741]) + list(raw_x[2741:2950]),                list(raw_y[2617:2741]) + list(raw_y[2741:2950])],      ["sos","down", "left", "eos"]),
-            ([    list(raw_x[4062:4478]) + list(raw_x[4478:4618]),                list(raw_y[4062:4478]) + list(raw_y[4478:4618])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[4262:4478]) + list(raw_x[4478:4638]),                list(raw_y[4262:4478]) + list(raw_y[4478:4638])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[2742:3105]) + list(raw_x[3105:3575]),                list(raw_y[2742:3105]) + list(raw_y[3105:3575])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[2942:3105]) + list(raw_x[3105:3575]),                list(raw_y[2942:3105]) + list(raw_y[3105:3575])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[2942:3105]) + list(raw_x[3105:3375]),                list(raw_y[2942:3105]) + list(raw_y[3105:3375])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[2742:3105]) + list(raw_x[3105:3375]),                list(raw_y[2742:3105]) + list(raw_y[3105:3375])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[1500:1860]) + list(raw_x[1860:2130]),                list(raw_y[1500:1860]) + list(raw_y[1860:2130])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[1700:1860]) + list(raw_x[1860:2030]),                list(raw_y[1700:1860]) + list(raw_y[1860:2030])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[4062:4480]) + list(raw_x[4480:4638]),                list(raw_y[4062:4480]) + list(raw_y[4480:4638])],      ["sos","left", "up", "eos"]),
-            ([    list(raw_x[1842:2155]) + list(raw_x[2155:2552]),                list(raw_y[1842:2155]) + list(raw_y[2155:2552])],      ["sos","up", "right", "eos"]),
-            ([    list(raw_x[4535:4656]) + list(raw_x[4656:4732]),                list(raw_y[4535:4656]) + list(raw_x[4656:4732])],      ["sos","up", "right", "eos"])
-        ]
+        # fixes some of the typing differences, don't think I need it anymore.
+        return data
 
-        return np.array(complex_data).tolist() # fixes some of the typing differences, don't think I need it anymore.
+    def getSplitComplexPoints(self, split_data):
+        dicto = []
+        temp_dicto = []
+        for i in range(82): # check that
+            dicto.append(len(split_data[i][0]))
+            temp_dicto.append(len(split_data[i][0]))
 
-    def getSplitComplexPoints(self):
-        dicto = [
+        for ele in [
             420,        #  0
             4835-4658,  #  1
             5326-5150,  #  2
@@ -428,7 +365,8 @@ class LoadTrajData(object):
             4480-4062,  # 26
             2155-1842,  # 27
             4656-4535   # 28
-        ]
+        ]:
+            dicto.append(ele)
         reversed_dicto = [
             622-420,   #  0 29
             4898-4835, #  1 30
@@ -461,6 +399,7 @@ class LoadTrajData(object):
             4732-4656  # 28 57
         ]
 
+        dicto = np.concatenate((dicto, temp_dicto))
         dicto = np.concatenate((dicto, reversed_dicto))
         return dicto
 
@@ -475,16 +414,7 @@ class LoadTrajData(object):
     def normalise(self, x, y):
         return [(x-np.mean(x))/np.std(x), (y-np.mean(y))/np.std(y)]
 
-    def loadData(self, file_path):
-        raw_data = np.load(file_path)
-        raw_x, raw_y = raw_data[:, 0], raw_data[:, 1]
-        raw_y = np.abs(raw_y - np.max(raw_y)) # flip it
-        raw_x, raw_y = self.normalise(raw_x, raw_y)
-        # self.basic_points_of_split = self.getSplitPoints()
-        self.points_of_split = self.getSplitComplexPoints()
-        split_data = self.splitComplexData(raw_x, raw_y)
-        # basic_split_data = self.splitData(raw_x, raw_y)
-        data = self.augment(split_data)
+    def assignData(self, data):
         if self.contents == 'locations':
             input_data, target_data = self.toStringLocations(data)
             action_data = target_data
@@ -495,6 +425,25 @@ class LoadTrajData(object):
             input_data, action_data, target_data = self.toDwithDirections(data)
 
         return input_data, action_data, target_data
+
+    def preprocess(self, file_path='', file_complex_path='', split_data=[]):
+        if file_path != '':
+            self.loadData(file_path)
+        if file_complex_path != '':
+            self.loadData(file_complex_path)
+
+        split_data = self.splitData(split_data, np.squeeze(self.data_dictionary["indexes"]), np.squeeze(self.data_dictionary["alphas"]))
+        split_data = self.augment(split_data)
+
+        self.points_of_split = self.getSplitComplexPoints(split_data)
+
+        return split_data
+
+    def loadRawData(self, file_path):
+        raw_data = np.load(file_path)
+        self.raw_x, self.raw_y = raw_data[:, 0], raw_data[:, 1]
+        self.raw_y = np.abs(self.raw_y - np.max(self.raw_y)) # flip it
+        self.raw_x, self.raw_y = self.normalise(self.raw_x, self.raw_y)
 
     def batch_data(self, data, labels, seqlen_idx, batch_size, actions=[]):
         """ Return a batch of data. When dataset end is reached, start over.
